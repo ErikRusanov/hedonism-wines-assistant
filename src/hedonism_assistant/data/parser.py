@@ -10,13 +10,13 @@ wrong producer or grape.
 
 Everything is best-effort and defensive -- a missing or malformed field never
 aborts the record. The breadcrumb section is captured so the orchestrator can
-keep wines and drop spirits/accessories that share the product sitemap.
+keep wines and drop spirits/accessories that share the catalogue listing.
 
 The parsing logic lives on :class:`ProductParser`, which binds one page's
 ``soup``/``url`` once and exposes ``@classmethod`` entry points; the pure
 field-level coercions are ``@staticmethod`` so they stay independently testable
-and free of page state. :func:`parse_product` and :func:`product_markup_missing`
-are kept as thin module-level facades for callers and tests.
+and free of page state. :func:`parse_product` is kept as a thin module-level
+facade for callers and tests.
 """
 
 from __future__ import annotations
@@ -72,8 +72,6 @@ _RE_SCORE: Final[re.Pattern[str]] = re.compile(r"\s*([\d.]+)\s*\+?\s+(.+?)\s*$")
 _RE_SKU: Final[re.Pattern[str]] = re.compile(r"HED\w+", re.IGNORECASE)
 _RE_WS: Final[re.Pattern[str]] = re.compile(r"\s+")
 
-_INTRO_MARKER: Final = "product_intro"
-
 
 @singledispatch
 def _image_url(image: Any) -> str | None:
@@ -120,11 +118,6 @@ class ProductParser:
     def parse(cls, html: str, url: str) -> RawWine | None:
         """Parse one product page; return ``None`` if it is not a product page."""
         return cls(html, url)._build()
-
-    @staticmethod
-    def markup_missing(html: str) -> bool:
-        """Cheap check used to decide whether the browser fallback is needed."""
-        return _INTRO_MARKER not in html
 
     def _build(self) -> RawWine | None:
         intro = self._soup.select_one(".product_intro")
@@ -403,8 +396,3 @@ class ProductParser:
 def parse_product(html: str, url: str) -> RawWine | None:
     """Parse one product page; return ``None`` if it is not a product page."""
     return ProductParser.parse(html, url)
-
-
-def product_markup_missing(html: str) -> bool:
-    """Cheap check used to decide whether the browser fallback is needed."""
-    return ProductParser.markup_missing(html)

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from hedonism_assistant.data.models import RawWine
-from hedonism_assistant.data.parser import parse_product, product_markup_missing
+from hedonism_assistant.data.parser import parse_product
 from hedonism_assistant.models.wine import Availability, WineColor
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -98,8 +98,3 @@ def test_non_vintage_and_sale_pricing() -> None:
 
 def test_non_product_page_returns_none() -> None:
     assert parse_product("<html><body><h1>Hello</h1></body></html>", "https://x/y") is None
-
-
-def test_product_markup_missing_predicate() -> None:
-    assert product_markup_missing("<html>no markup here</html>") is True
-    assert product_markup_missing('<div class="product_intro"></div>') is False

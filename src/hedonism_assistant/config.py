@@ -46,16 +46,11 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 60.0
     max_retries: int = 3
 
-    # Scraper (data track, offline). The catalogue sits behind Cloudflare, so
-    # every knob that affects how we crawl -- and how we get past the bot check
-    # -- lives here.
+    # Scraper (data track, offline). The catalogue sits behind Cloudflare, so we
+    # fetch every page through a real Playwright Chromium (the only thing that
+    # gets past the bot check). Every crawl knob lives here.
     scrape_base_url: str = "https://hedonism.co.uk"
-    scrape_sitemap_url: str = "https://hedonism.co.uk/sitemap-products.xml"
-    # curl_cffi browser profile to impersonate (TLS + HTTP fingerprint). This is
-    # what gets past Cloudflare; an empty string disables impersonation and falls
-    # back to a plain client with the User-Agent below (usually 403s).
-    scrape_impersonate: str = "chrome"
-    # User-Agent used by the Playwright fallback and when impersonation is off.
+    # User-Agent the browser presents.
     scrape_user_agent: str = (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -64,15 +59,19 @@ class Settings(BaseSettings):
     scrape_max_concurrency: int = 4
     scrape_timeout_seconds: float = 30.0
     scrape_max_retries: int = 3
-    scrape_cache_dir: str = "data/cache"  # raw HTML + parsed JSON, for idempotent re-runs
+    scrape_cache_dir: str = "data/cache"  # raw HTML, for idempotent re-runs
     scrape_output_path: str = "data/wines.raw.jsonl"
     # Keep only catalogue items whose breadcrumb section is "Wines" (drops
-    # spirits, accessories and books that share the product sitemap).
+    # spirits, accessories and books that share the listing).
     scrape_wines_only: bool = True
     # Optional cap on the number of products fetched, for quick smoke runs.
     scrape_max_products: int | None = None
-    # Use the Playwright fallback when static HTML lacks the product markup.
-    scrape_use_browser_fallback: bool = False
+
+    scrape_browser_headless: bool = True
+    # When Cloudflare shows an interactive challenge, point this at a Chrome
+    # profile dir so the cf_clearance cookie persists across runs (solve once).
+    scrape_browser_user_data_dir: str = ""
+    scrape_browser_wait_until: str = "domcontentloaded"  # domcontentloaded|load|networkidle
 
     # Normalization & enrichment (data track, offline). Turns the permissive
     # scrape output into canonical Wine cards ready for indexing.

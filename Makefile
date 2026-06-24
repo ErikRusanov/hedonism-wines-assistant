@@ -1,16 +1,23 @@
-.PHONY: help setup run test format data
+.PHONY: help setup scrape-setup run test format data
 .DEFAULT_GOAL := help
 
 # Data-track parameters, overridable on the command line. Examples:
-#   make data LIMIT=50      # scrape + enrich the first 50 products
-#   make data USE_LLM=1     # add the LLM style/pairing enrichment pass
+#   make data                    # scrape the whole catalogue (incremental)
+#   make data LIMIT=50           # scrape the first 50 products
+#   make data ENRICH=1           # scrape then normalize/enrich
+#   make data ENRICH=1 USE_LLM=1 # ... plus the LLM style/pairing enrichment pass
+#   make data REWRITE=1          # clean rebuild instead of incremental merge
+#   make data FILE=urls.txt      # scrape exactly the URLs in a file
 LIMIT   ?=                  # cap records processed (empty = full run)
 USE_LLM ?=                  # set to 1 to enable the LLM enrichment pass
+ENRICH  ?=                  # set to 1 to also normalize/enrich after scraping
+REWRITE ?=                  # set to 1 to rebuild output instead of merging
+FILE    ?=                  # scrape exactly these URLs instead of the listing
 
 # Show this help (targets are documented with '##' comments).
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
-		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-8s\033[0m %s\n", $$1, $$2}'
+		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-13s\033[0m %s\n", $$1, $$2}'
 
 # One-time project setup: env file, virtualenv, deps, docker images, git hooks.
 setup: ## One-time setup: .env, virtualenv, deps, docker images, git hooks
@@ -19,6 +26,11 @@ setup: ## One-time setup: .env, virtualenv, deps, docker images, git hooks
 	uv pip install -e ".[dev]"
 	docker compose pull
 	uv run pre-commit install
+
+# Install the optional browser stack the scraper needs (the site is Cloudflare-gated).
+scrape-setup: ## One-time scraper setup: Playwright + Chromium
+	uv pip install -e ".[scrape]"
+	uv run playwright install chromium
 
 # Start Qdrant in Docker and run the API locally on http://127.0.0.1:8000.
 run: ## Start Qdrant + the API locally on http://127.0.0.1:8000
@@ -34,8 +46,10 @@ format: ## Format and autofix with ruff
 	uv run ruff format .
 	uv run ruff check . --fix
 
-# Data track (offline): scrape the catalogue then normalize/enrich into
-# wines.enriched.jsonl. Tune with LIMIT=N and USE_LLM=1 (see top of file).
-data: ## Scrape + enrich the catalogue (LIMIT=N, USE_LLM=1)
-	uv run python -m hedonism_assistant.data.scrape --log-console $(if $(LIMIT),--limit $(LIMIT))
-	uv run python -m hedonism_assistant.data.enrich --log-console $(if $(LIMIT),--limit $(LIMIT)) $(if $(USE_LLM),--use-llm)
+# Data track (offline): scrape the catalogue into wines.raw.jsonl, and with
+# ENRICH=1 normalize/enrich it into wines.enriched.jsonl. Needs `make scrape-setup`
+# first. Scraping is incremental by default; see the parameters at the top.
+data: ## Scrape (+ ENRICH=1) the catalogue — LIMIT/USE_LLM/REWRITE/FILE
+	uv run python -m hedonism_assistant.data.scrape --log-console \
+		$(if $(LIMIT),--limit $(LIMIT)) $(if $(REWRITE),--rewrite) $(if $(FILE),--urls-file $(FILE))
+	$(if $(ENRICH),uv run python -m hedonism_assistant.data.enrich --log-console $(if $(LIMIT),--limit $(LIMIT)) $(if $(USE_LLM),--use-llm))
