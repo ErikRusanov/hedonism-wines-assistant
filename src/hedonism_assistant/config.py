@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 60.0
     max_retries: int = 3
 
+    # Query understanding (self-query)
+    query_parsing_enabled: bool = True
+    query_parse_temperature: float = 0.0
+
     @field_validator("generation_fallback_models", "utility_fallback_models", mode="before")
     @classmethod
     def _split_csv(cls, value: object) -> object:
