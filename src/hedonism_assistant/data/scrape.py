@@ -1,14 +1,25 @@
 """Scrape orchestrator and CLI for the data track (I-1).
 
 Pipeline: discover product URLs from the sitemap, fetch each page politely (with
-an on-disk cache), parse it into a :class:`RawWine`, keep the wines, and stream
+an on-disk cache), parse it into a :class:`RawWine`, keep the wines, and write
 the results to ``wines.raw.jsonl``. A coverage report -- how many products were
 found/fetched/kept and how completely each field is populated -- is written
 alongside the data and logged, so the quality of a run is visible at a glance.
 
+Two safety properties matter when the live site is behind anti-bot protection
+that can start refusing us mid-project:
+
+* **A failed run never destroys good data.** The JSONL is written atomically
+  (temp file + ``os.replace``) and only when at least one record was produced, so
+  a blocked sitemap (0 discovered) leaves the previous dataset untouched.
+* **An offline rebuild path.** ``--from-cache`` re-parses whatever HTML is already
+  cached without touching the network, so the normalization stage can keep
+  iterating while the site is blocking fresh fetches.
+
 Run it as a module::
 
     python -m hedonism_assistant.data.scrape --limit 50 --log-console
+    python -m hedonism_assistant.data.scrape --from-cache --log-console
 
 Re-runs are idempotent: cached pages are reused, so only unseen products hit the
 network.
@@ -19,6 +30,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -93,6 +105,47 @@ class ScrapeReport:
         self.field_coverage = self._coverage(records)
 
 
+def _safe_write_jsonl(output_path: Path, records: Sequence[RawWine]) -> bool:
+    """Atomically write ``records`` to ``output_path``; never clobber on empty.
+
+    A blocked or empty run must not destroy a previously-good dataset, so when
+    there is nothing to write we leave any existing file untouched. Otherwise we
+    write to a temp file and ``os.replace`` it into place (atomic on POSIX).
+    """
+    if not records:
+        logger.warning(
+            "output_unchanged",
+            reason="no records produced (blocked or empty run); previous output kept",
+            output=str(output_path),
+        )
+        return False
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as out:
+        for record in records:
+            out.write(record.model_dump_json() + "\n")
+    os.replace(tmp_path, output_path)
+    return True
+
+
+def _write_report(settings: Settings, report: ScrapeReport) -> None:
+    report_path = Path(settings.scrape_output_path).with_name("scrape_report.json")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(asdict(report), indent=2), encoding="utf-8")
+
+
+def _keep(report: ScrapeReport, wine: RawWine | None, *, wines_only: bool) -> RawWine | None:
+    """Apply the parse/wines-only filters, updating ``report`` counters."""
+    if wine is None:
+        report.parse_failures += 1
+        return None
+    if wines_only and not wine.is_wine:
+        report.non_wine_skipped += 1
+        return None
+    report.written += 1
+    return wine
+
+
 async def _handle_one(
     fetcher: Fetcher, url: str
 ) -> tuple[str, RawWine | None, bool, Exception | None]:
@@ -108,7 +161,6 @@ async def run_scrape(settings: Settings) -> ScrapeReport:
     """Execute a full scrape and return its report; writes JSONL + report file."""
     report = ScrapeReport()
     output_path = Path(settings.scrape_output_path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     async with Fetcher(settings) as fetcher:
         urls = await discover_product_urls(
@@ -117,36 +169,70 @@ async def run_scrape(settings: Settings) -> ScrapeReport:
             max_products=settings.scrape_max_products,
         )
         report.discovered = len(urls)
-        logger.info("scrape_start", discovered=report.discovered, output=str(output_path))
+        if not urls:
+            # Almost always the sitemap being blocked (403/404). Do NOT write
+            # output -- that would wipe a previously-good dataset.
+            logger.warning(
+                "no_products_discovered",
+                hint="sitemap blocked or empty; existing output left untouched",
+            )
+            _write_report(settings, report)
+            return report
 
+        logger.info("scrape_start", discovered=report.discovered, output=str(output_path))
         kept: list[RawWine] = []
         tasks = [asyncio.create_task(_handle_one(fetcher, url)) for url in urls]
+        for index, future in enumerate(asyncio.as_completed(tasks), start=1):
+            url, wine, from_cache, error = await future
+            if error is not None:
+                report.fetch_errors += 1
+                logger.warning("fetch_error", url=url, error=str(error))
+                continue
+            report.fetched += 1
+            report.from_cache += int(from_cache)
+            if (wanted := _keep(report, wine, wines_only=settings.scrape_wines_only)) is not None:
+                kept.append(wanted)
+            if index % 250 == 0:
+                logger.info("scrape_progress", processed=index, total=report.discovered)
 
-        with output_path.open("w", encoding="utf-8") as out:
-            for index, future in enumerate(asyncio.as_completed(tasks), start=1):
-                url, wine, from_cache, error = await future
-                if error is not None:
-                    report.fetch_errors += 1
-                    logger.warning("fetch_error", url=url, error=str(error))
-                    continue
-                report.fetched += 1
-                report.from_cache += int(from_cache)
-                if wine is None:
-                    report.parse_failures += 1
-                    continue
-                if settings.scrape_wines_only and not wine.is_wine:
-                    report.non_wine_skipped += 1
-                    continue
-                out.write(wine.model_dump_json() + "\n")
-                kept.append(wine)
-                report.written += 1
-                if index % 250 == 0:
-                    logger.info("scrape_progress", processed=index, total=report.discovered)
-
+    _safe_write_jsonl(output_path, kept)
     report.finalize(kept)
-    report_path = output_path.with_name("scrape_report.json")
-    report_path.write_text(json.dumps(asdict(report), indent=2), encoding="utf-8")
+    _write_report(settings, report)
     logger.info("scrape_done", **{k: v for k, v in asdict(report).items() if k != "field_coverage"})
+    return report
+
+
+def run_from_cache(settings: Settings) -> ScrapeReport:
+    """Rebuild the JSONL from already-cached HTML, without touching the network.
+
+    Lets the normalization stage (I-2) iterate on whatever has been scraped so far
+    even while the live site is blocking fresh fetches.
+    """
+    report = ScrapeReport()
+    output_path = Path(settings.scrape_output_path)
+    cache_dir = Path(settings.scrape_cache_dir) / "html"
+    pages = sorted(cache_dir.glob("*.html"))
+    if settings.scrape_max_products is not None:
+        pages = pages[: settings.scrape_max_products]
+    report.discovered = len(pages)
+    logger.info("cache_rebuild_start", pages=report.discovered, cache=str(cache_dir))
+
+    kept: list[RawWine] = []
+    for page in pages:
+        report.fetched += 1
+        report.from_cache += 1
+        url = f"{settings.scrape_base_url}/product/{page.stem}"
+        wine = parse_product(page.read_text(encoding="utf-8"), url)
+        if (wanted := _keep(report, wine, wines_only=settings.scrape_wines_only)) is not None:
+            kept.append(wanted)
+
+    _safe_write_jsonl(output_path, kept)
+    report.finalize(kept)
+    _write_report(settings, report)
+    logger.info(
+        "cache_rebuild_done",
+        **{k: v for k, v in asdict(report).items() if k != "field_coverage"},
+    )
     return report
 
 
@@ -163,6 +249,8 @@ def _settings_from_args(args: argparse.Namespace) -> Settings:
         overrides["scrape_request_delay_seconds"] = args.delay
     if args.concurrency is not None:
         overrides["scrape_max_concurrency"] = args.concurrency
+    if args.impersonate is not None:
+        overrides["scrape_impersonate"] = args.impersonate
     if args.all_products:
         overrides["scrape_wines_only"] = False
     if args.browser_fallback:
@@ -189,11 +277,17 @@ def _print_summary(report: ScrapeReport) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Scrape the Hedonism wines catalogue (I-1).")
-    parser.add_argument("--limit", type=int, help="Cap the number of products fetched.")
+    parser.add_argument("--limit", type=int, help="Cap the number of products processed.")
     parser.add_argument("--output", help="Output JSONL path.")
     parser.add_argument("--sitemap", help="Override the product sitemap URL.")
     parser.add_argument("--delay", type=float, help="Seconds to wait between requests.")
     parser.add_argument("--concurrency", type=int, help="Max concurrent requests.")
+    parser.add_argument("--impersonate", help="curl_cffi browser profile (e.g. chrome131, safari).")
+    parser.add_argument(
+        "--from-cache",
+        action="store_true",
+        help="Rebuild the JSONL from cached HTML only; no network access.",
+    )
     parser.add_argument(
         "--all-products",
         action="store_true",
@@ -213,7 +307,7 @@ def main() -> None:
 
     settings = _settings_from_args(args)
     configure_logging(settings.log_level, json_output=not args.log_console)
-    report = asyncio.run(run_scrape(settings))
+    report = run_from_cache(settings) if args.from_cache else asyncio.run(run_scrape(settings))
     _print_summary(report)
 
 

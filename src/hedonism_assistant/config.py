@@ -103,6 +103,15 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
+    @field_validator("scrape_max_products", mode="before")
+    @classmethod
+    def _empty_str_to_none(cls, value: object) -> object:
+        """Treat an empty/blank env value as unset, so ``SCRAPE_MAX_PRODUCTS=``
+        means "scrape the whole catalogue" instead of failing int parsing."""
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
 
 @lru_cache
 def get_settings() -> Settings:
