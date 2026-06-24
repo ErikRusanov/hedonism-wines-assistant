@@ -1,0 +1,99 @@
+<!doctype html>
+<!--
+  Synthetic fixture mirroring the structure of a Hedonism product page.
+  All content is invented (no copyrighted catalogue text). The "you may also
+  like" rail intentionally repeats /wineries/ and /wine/ links for OTHER bottles
+  so the parser's .product_intro scoping is exercised.
+-->
+<html lang="en">
+<head>
+  <title>Chateau Imaginaire 2018 | Hedonism Wines</title>
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Product",
+        "name": "Chateau Imaginaire 2018",
+        "description": "An invented tasting note written purely for tests. Dark fruit, fine tannins, a long finish.",
+        "image": {
+          "@type": "ImageObject",
+          "url": "https://hedonism.co.uk/sites/default/files/uploads/vintner/vintner-images/HED99999.JPG",
+          "width": "1000",
+          "height": "1500"
+        },
+        "offers": {
+          "@type": "Offer",
+          "price": "55.000000",
+          "priceCurrency": "GBP",
+          "availability": "https://schema.org/InStock",
+          "itemCondition": "https://schema.org/NewCondition"
+        },
+        "sku": "HED99999",
+        "brand": { "@type": "Brand", "name": "Hedonism Wines" }
+      },
+      { "@type": "WebPage" },
+      { "@type": "BreadcrumbList" }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <ol class="breadcrumb">
+    <li><a href="/">Home</a></li>
+    <li><a href="/wines">Wines</a></li>
+    <li class="active">Chateau Imaginaire 2018</li>
+  </ol>
+
+  <div class="product-image-desc">
+    <div class="product_intro">
+      <div class="product-heading">
+        <div class="product-stock">4 left</div>
+        <h1 class="page-title"><span>Chateau Imaginaire 2018</span></h1>
+        <div class="title-sub-string">
+          <span>HED99999 </span><span>75cl</span><span> 13.5% </span>
+          <span class="wishlist-button" data-variation-id="999">HED-NOISE</span>
+        </div>
+        <div class="product--variation-field--variation_price__1 field field--name-price">
+          <div class="price-with-discount"><div class="base-price">£55.00</div></div>
+          <div class="ex-vat-wrap">
+            <small class="ex-vat-price">£45.83 ex-VAT </small>
+            <small class="ex-vat-info">Pay ex-VAT when shipping outside the UK</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="field field--name-body"><p>An invented body description for tests.</p></div>
+
+      <div class="attribute-item vintage">
+        <svg viewBox="0 0 12 12"></svg>
+        <span class="field--item"><a href="https://hedonism.co.uk/wines/vintages/2018">2018</a></span>
+      </div>
+      <div class="attribute-item colour"><svg></svg>Red</div>
+      <div class="attribute-item producer">
+        <ul><li class="first"><a href="/wineries/imaginaire-estate">Imaginaire Estate</a></li></ul>
+      </div>
+      <div class="attribute-item region">
+        <a href="/wines/bordeaux-wine">Bordeaux</a>, <a href="/wines/french-wine">France</a>
+      </div>
+      <div class="attribute-item grape">
+        <span class="field-content"><a href="/wine/cabernet-sauvignon-wine">Cabernet Sauvignon</a></span>
+      </div>
+
+      <div class="panel">
+        <h4 class="panel-title"><a href="#collapse-1">95 Robert Parker</a></h4>
+        <div class="panel-collapse collapse in">Invented Robert Parker note for tests.</div>
+        <h4 class="panel-title"><a href="#collapse-2">18 Jancis Robinson</a></h4>
+        <div class="panel-collapse collapse">Invented Jancis Robinson note for tests.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- "You may also like" rail: DIFFERENT producer/grape that must be ignored. -->
+  <section class="related">
+    <a href="/product/other-bottle-2014">Other Bottle 2014</a>
+    <a href="/wineries/decoy-winery">Decoy Winery</a>
+    <a href="/wine/merlot-wine">Merlot</a>
+  </section>
+</body>
+</html>
