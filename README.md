@@ -73,6 +73,32 @@ Pages occasionally need JavaScript rendering; enable the optional Playwright
 fallback with `uv pip install -e ".[scrape]" && playwright install chromium`,
 then pass `--browser-fallback`.
 
+## Data track — normalization & enrichment (I-2)
+
+The enrich stage turns the permissive scrape output into the canonical `Wine`
+cards that get indexed. It is deterministic and offline by default: it derives the
+catalogue **category** (still / sparkling / sweet / fortified — a facet the site
+does not expose) from name/region keywords, canonicalises grape synonyms
+(*Tinto Fino → Tempranillo*, *Shiraz → Syrah*) and a few country spellings, names
+the bottle **format** (1500ml → Magnum), de-duplicates by id, drops records
+missing a required field, and builds each wine's **embedding passport** — the NL
+"passport" sentence dense retrieval embeds, assembled from the structured fields
+plus a bounded excerpt of the tasting note. The result is streamed to
+`data/wines.enriched.jsonl` with a coverage report in `data/enrich_report.json`.
+
+```bash
+# Deterministic pass (no network):
+python -m hedonism_assistant.data.enrich --log-console
+
+# Optionally add style and food-pairing tags via the utility model (needs a key):
+python -m hedonism_assistant.data.enrich --use-llm
+```
+
+The optional `--use-llm` step fills a missing colour and adds `style_tags` /
+`food_pairings` with the cheap utility model. It is gated behind `ENRICH_USE_LLM`
+(off by default) and, like the query parser, never fails the run: any error
+leaves a card exactly as it came in, and tags are merged additively.
+
 > Note: the site's `robots.txt` disallows `ClaudeBot` and other AI crawlers and
 > sets `ai-train=no`, while allowing the generic `User-Agent: *` with
 > `search=yes`. The scraper crawls only the sitemap-advertised product pages,

@@ -74,6 +74,23 @@ class Settings(BaseSettings):
     # Use the Playwright fallback when static HTML lacks the product markup.
     scrape_use_browser_fallback: bool = False
 
+    # Normalization & enrichment (data track, offline). Turns the permissive
+    # scrape output into canonical Wine cards ready for indexing.
+    enrich_input_path: str = "data/wines.raw.jsonl"
+    enrich_output_path: str = "data/wines.enriched.jsonl"
+    # How much of the (copyrighted) tasting note to fold into the embedding text.
+    # Bounded to keep dense vectors focused and to store the source sparingly.
+    embedding_text_notes_chars: int = 600
+    # Optional LLM pass: fill a missing colour and add style/food-pairing tags
+    # with the cheap utility model. Off by default so the pipeline runs fully
+    # offline and deterministically; turn on to enrich.
+    enrich_use_llm: bool = False
+    enrich_llm_temperature: float = 0.0
+    enrich_llm_concurrency: int = 4
+    # Cap on style_tags / food_pairings kept per card after the LLM pass, so a
+    # chatty model cannot bloat the payload or the embedding text.
+    enrich_max_tags: int = 6
+
     # Query understanding (self-query)
     query_parsing_enabled: bool = True
     query_parse_temperature: float = 0.0

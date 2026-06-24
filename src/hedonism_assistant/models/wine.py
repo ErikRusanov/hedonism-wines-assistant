@@ -109,6 +109,19 @@ class Wine(BaseModel):
     )
     image_url: HttpUrl | None = None
 
+    # Enrichment tags (I-2). Optional and empty by default so the deterministic
+    # pipeline never depends on them; populated only when LLM enrichment is on.
+    # They serve the "pairing" intent and style-based retrieval and are folded
+    # into both the embedding text and the filterable payload.
+    style_tags: list[str] = Field(
+        default_factory=list,
+        description="Descriptive style/occasion tags, e.g. 'full-bodied', 'oaked', 'mineral'.",
+    )
+    food_pairings: list[str] = Field(
+        default_factory=list,
+        description="Dishes the wine suits, e.g. 'roast lamb', 'hard cheese'.",
+    )
+
     embedding_text: str | None = Field(
         default=None,
         description="NL passport text embedded for dense retrieval (set during enrichment).",
