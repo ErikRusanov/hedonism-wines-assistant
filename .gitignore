@@ -1,0 +1,43 @@
+# Claude
+.claude/plans/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# uv
+.uv/
+
+# Environment
+.env
+.env.local
+
+# Testing / tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Data artifacts (scraped / enriched datasets, raw caches)
+data/
+*.jsonl
+
+# Qdrant local storage
+qdrant_storage/
+
+# Logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
