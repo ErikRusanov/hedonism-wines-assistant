@@ -88,3 +88,8 @@ console in dev) — use `get_logger(__name__)`, never bare `print`.
 - Ruff is the linter/formatter (line length 100); keep `ruff check .` clean.
 - New tunable behaviour should be a config toggle in `config.py`, not a hardcoded constant —
   the retrieval pipeline (top-N/K, reranker, MMR, fusion) is meant to be tuned.
+
+## Git workflow (this repo)
+
+This is a fast demo: **do NOT create a feature branch.** Commit (and push) directly to
+`master`. Skip the usual "branch first on the default branch" step.
