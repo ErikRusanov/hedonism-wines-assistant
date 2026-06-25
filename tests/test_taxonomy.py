@@ -1,28 +1,14 @@
 """Unit tests for catalogue-taxonomy filter validation."""
 
-from hedonism_assistant.models.wine import Wine, WineCategory
 from hedonism_assistant.retrieval.taxonomy import Taxonomy, TaxonomyDimension
-
-
-def _wine(**overrides: object) -> Wine:
-    base: dict[str, object] = {
-        "id": "HED1",
-        "slug": "a-wine",
-        "name": "A Wine",
-        "url": "https://hedonism.co.uk/wines/a-wine",
-        "category": WineCategory.STILL,
-        "bottle_size_ml": 750,
-        "price": 42.0,
-    }
-    base.update(overrides)
-    return Wine(**base)
+from tests.fixtures.wines import make_wine
 
 
 def test_from_wines_collects_distinct_values() -> None:
     wines = [
-        _wine(country="France", region="Bordeaux", sub_region="Pauillac", grapes=["Merlot"]),
-        _wine(country="France", region="Burgundy", grapes=["Pinot Noir", "Merlot"]),
-        _wine(country="Italy", region="Tuscany", grapes=[]),
+        make_wine(country="France", region="Bordeaux", sub_region="Pauillac", grapes=["Merlot"]),
+        make_wine(country="France", region="Burgundy", grapes=["Pinot Noir", "Merlot"]),
+        make_wine(country="Italy", region="Tuscany", grapes=[]),
     ]
 
     taxonomy = Taxonomy.from_wines(wines)

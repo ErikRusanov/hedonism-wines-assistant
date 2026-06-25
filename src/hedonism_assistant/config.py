@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from functools import lru_cache
 from typing import Annotated
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+class EmbeddingProvider(StrEnum):
+    """Backend that produces dense vectors. ``LOCAL`` keeps the pipeline offline."""
+
+    LOCAL = "local"
+    OPENROUTER = "openrouter"
 
 
 class Settings(BaseSettings):
@@ -28,7 +36,6 @@ class Settings(BaseSettings):
 
     generation_model: str = "anthropic/claude-opus-4-8"
     utility_model: str = "anthropic/claude-haiku-4-5"
-    embedding_model: str = "openai/text-embedding-3-large"
 
     # NoDecode: keep the raw env string so the CSV validator below handles it,
     # instead of pydantic-settings attempting to JSON-decode the value first.
@@ -40,55 +47,43 @@ class Settings(BaseSettings):
     qdrant_api_key: str = ""
     qdrant_collection: str = "hedonism_wines"
 
+    # Embeddings (local by default; runs fully offline). Dense vectors come from a
+    # local sentence-transformers model rather than OpenRouter, so indexing works
+    # without network access. Generation and the utility model stay on OpenRouter.
+    embedding_provider: EmbeddingProvider = EmbeddingProvider.LOCAL
+    embedding_model: str = "BAAI/bge-base-en-v1.5"  # local model id (HF) or OpenRouter slug
+    embedding_dimensions: int = 768  # bge-base (frozen index<->query contract)
+    embedding_device: str = ""  # "" = auto-detect (mps/cuda/cpu)
+    # BGE asks for a query instruction on the query side only; passages get none.
+    # The index side (here) embeds passages; I-5's query side honors this prompt.
+    embedding_query_prompt: str = "Represent this sentence for searching relevant passages:"
+    embedding_batch_size: int = 64  # texts per embed call
+
+    # Indexing (Qdrant collection). The vector names and sparse toggle are the
+    # frozen I-3<->I-5 contract: the query side (I-5) must read the same names and
+    # load the same persisted sparse encoder, or retrieval skews.
+    qdrant_dense_vector_name: str = "dense"  # frozen, I-5
+    qdrant_sparse_vector_name: str = "sparse"  # frozen, I-5
+    sparse_enabled: bool = True  # build sparse/BM25 vectors (shared with I-5)
+    sparse_encoder_path: str = "data/sparse_encoder.json"  # persisted fitted IDF (reused by I-5)
+    index_batch_size: int = 128  # points per Qdrant upsert
+
     # App
     log_level: str = "INFO"
     log_json: bool = True
     request_timeout_seconds: float = 60.0
     max_retries: int = 3
 
-    # Scraper (data track, offline). The catalogue sits behind Cloudflare, so we
-    # fetch every page through a real Playwright Chromium (the only thing that
-    # gets past the bot check). Every crawl knob lives here.
-    scrape_base_url: str = "https://hedonism.co.uk"
-    # User-Agent the browser presents.
-    scrape_user_agent: str = (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-    )
-    scrape_request_delay_seconds: float = 1.0  # polite gap between requests
-    scrape_max_concurrency: int = 4
-    scrape_timeout_seconds: float = 30.0
-    scrape_max_retries: int = 3
-    scrape_cache_dir: str = "data/cache"  # raw HTML, for idempotent re-runs
-    scrape_output_path: str = "data/wines.raw.jsonl"
-    # Keep only catalogue items whose breadcrumb section is "Wines" (drops
-    # spirits, accessories and books that share the listing).
-    scrape_wines_only: bool = True
-    # Optional cap on the number of products fetched, for quick smoke runs.
-    scrape_max_products: int | None = None
-
-    scrape_browser_headless: bool = True
-    # When Cloudflare shows an interactive challenge, point this at a Chrome
-    # profile dir so the cf_clearance cookie persists across runs (solve once).
-    scrape_browser_user_data_dir: str = ""
-    scrape_browser_wait_until: str = "domcontentloaded"  # domcontentloaded|load|networkidle
-
-    # Normalization & enrichment (data track, offline). Turns the permissive
-    # scrape output into canonical Wine cards ready for indexing.
-    enrich_input_path: str = "data/wines.raw.jsonl"
-    enrich_output_path: str = "data/wines.enriched.jsonl"
+    # Data extraction (offline). The catalogue is no longer scraped: product-page
+    # HTML is captured by hand (see data/chrome_capture_prompt.md) and dropped as
+    # <slug>.html files in the cache below. `extract` parses + normalizes them into
+    # canonical Wine cards. The base URL only synthesizes a page URL from a slug.
+    catalogue_base_url: str = "https://hedonism.co.uk"
+    html_input_dir: str = "data/cache/html"  # captured <slug>.html files
+    extract_output_path: str = "data/wines.enriched.jsonl"  # canonical Wine cards
     # How much of the (copyrighted) tasting note to fold into the embedding text.
     # Bounded to keep dense vectors focused and to store the source sparingly.
     embedding_text_notes_chars: int = 600
-    # Optional LLM pass: fill a missing colour and add style/food-pairing tags
-    # with the cheap utility model. Off by default so the pipeline runs fully
-    # offline and deterministically; turn on to enrich.
-    enrich_use_llm: bool = False
-    enrich_llm_temperature: float = 0.0
-    enrich_llm_concurrency: int = 4
-    # Cap on style_tags / food_pairings kept per card after the LLM pass, so a
-    # chatty model cannot bloat the payload or the embedding text.
-    enrich_max_tags: int = 6
 
     # Query understanding (self-query)
     query_parsing_enabled: bool = True
@@ -100,15 +95,6 @@ class Settings(BaseSettings):
         """Allow comma-separated strings for list-valued settings."""
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
-        return value
-
-    @field_validator("scrape_max_products", mode="before")
-    @classmethod
-    def _empty_str_to_none(cls, value: object) -> object:
-        """Treat an empty/blank env value as unset, so ``SCRAPE_MAX_PRODUCTS=``
-        means "scrape the whole catalogue" instead of failing int parsing."""
-        if isinstance(value, str) and not value.strip():
-            return None
         return value
 
 

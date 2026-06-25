@@ -1,12 +1,11 @@
-"""Offline data track: scrape -> normalize -> index the Hedonism catalogue.
+"""Offline data track: extract -> index the Hedonism catalogue.
 
 This package is import-light by design: nothing here is pulled in by the serving
-API. The scraper (``scrape.py``) discovers product URLs by paginating the
-``/wines`` listing, fetches each page through a real browser (Playwright) with an
-on-disk cache, and parses each page into a
-:class:`~hedonism_assistant.data.models.RawWine` record written to
-``wines.raw.jsonl``. The enrich stage (``enrich.py`` + ``normalize.py``, with the
-optional LLM step in ``enricher.py``) turns those raw records into canonical
-:class:`~hedonism_assistant.models.wine.Wine` cards in ``wines.enriched.jsonl``,
-ready for indexing (I-3).
+API. The catalogue is not scraped -- product-page HTML is captured by hand (see
+``data/chrome_capture_prompt.md``) and saved as ``<slug>.html`` files. The
+extract stage (``extract.py`` + ``parser.py`` + ``normalize.py``) parses each
+file into a :class:`~hedonism_assistant.data.models.RawWine`, normalizes it into a
+canonical :class:`~hedonism_assistant.models.wine.Wine` card, and writes
+``wines.enriched.jsonl``. The index stage (``index.py``) embeds those cards
+locally and upserts them into Qdrant (I-3).
 """

@@ -1,18 +1,13 @@
-.PHONY: help setup scrape-setup run test format data
+.PHONY: help setup embed-setup run test format data index
 .DEFAULT_GOAL := help
 
 # Data-track parameters, overridable on the command line. Examples:
-#   make data                    # scrape the whole catalogue (incremental)
-#   make data LIMIT=50           # scrape the first 50 products
-#   make data ENRICH=1           # scrape then normalize/enrich
-#   make data ENRICH=1 USE_LLM=1 # ... plus the LLM style/pairing enrichment pass
-#   make data REWRITE=1          # clean rebuild instead of incremental merge
-#   make data FILE=urls.txt      # scrape exactly the URLs in a file
+#   make data                    # extract all captured HTML into enriched cards
+#   make data LIMIT=50           # extract the first 50 HTML files
+#   make index                   # embed + index the enriched cards into Qdrant
+#   make index RECREATE=1        # drop + rebuild the Qdrant collection
 LIMIT   ?=                  # cap records processed (empty = full run)
-USE_LLM ?=                  # set to 1 to enable the LLM enrichment pass
-ENRICH  ?=                  # set to 1 to also normalize/enrich after scraping
-REWRITE ?=                  # set to 1 to rebuild output instead of merging
-FILE    ?=                  # scrape exactly these URLs instead of the listing
+RECREATE ?=                 # set to 1 to drop+rebuild the Qdrant collection (index)
 
 # Show this help (targets are documented with '##' comments).
 help:
@@ -27,10 +22,9 @@ setup: ## One-time setup: .env, virtualenv, deps, docker images, git hooks
 	docker compose pull
 	uv run pre-commit install
 
-# Install the optional browser stack the scraper needs (the site is Cloudflare-gated).
-scrape-setup: ## One-time scraper setup: Playwright + Chromium
-	uv pip install -e ".[scrape]"
-	uv run playwright install chromium
+# Install the optional local-embedding stack (torch + sentence-transformers).
+embed-setup: ## One-time embedding setup: install the local sentence-transformers stack
+	uv pip install -e ".[embed]"
 
 # Start Qdrant in Docker and run the API locally on http://127.0.0.1:8000.
 run: ## Start Qdrant + the API locally on http://127.0.0.1:8000
@@ -46,10 +40,16 @@ format: ## Format and autofix with ruff
 	uv run ruff format .
 	uv run ruff check . --fix
 
-# Data track (offline): scrape the catalogue into wines.raw.jsonl, and with
-# ENRICH=1 normalize/enrich it into wines.enriched.jsonl. Needs `make scrape-setup`
-# first. Scraping is incremental by default; see the parameters at the top.
-data: ## Scrape (+ ENRICH=1) the catalogue — LIMIT/USE_LLM/REWRITE/FILE
-	uv run python -m hedonism_assistant.data.scrape --log-console \
-		$(if $(LIMIT),--limit $(LIMIT)) $(if $(REWRITE),--rewrite) $(if $(FILE),--urls-file $(FILE))
-	$(if $(ENRICH),uv run python -m hedonism_assistant.data.enrich --log-console $(if $(LIMIT),--limit $(LIMIT)) $(if $(USE_LLM),--use-llm))
+# Data track (offline): extract canonical Wine cards from the captured product
+# HTML (data/cache/html/*.html) into wines.enriched.jsonl. Deterministic, no network.
+data: ## Extract captured HTML into enriched cards — LIMIT
+	uv run python -m hedonism_assistant.data.extract --log-console \
+		$(if $(LIMIT),--limit $(LIMIT))
+
+# Index the enriched cards (wines.enriched.jsonl) into Qdrant as a hybrid
+# dense+sparse collection. Starts Qdrant in Docker first. RECREATE=1 drops and
+# rebuilds the collection; LIMIT caps the number of cards.
+index: ## Index enriched cards into Qdrant — LIMIT/RECREATE
+	docker compose up -d qdrant
+	uv run python -m hedonism_assistant.data.index --log-console \
+		$(if $(LIMIT),--limit $(LIMIT)) $(if $(RECREATE),--recreate)

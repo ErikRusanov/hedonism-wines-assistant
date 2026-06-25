@@ -15,6 +15,7 @@ dependencies = [
     "structlog>=24.4",
     "beautifulsoup4>=4.12",
     "lxml>=5.3",
+    "qdrant-client>=1.12",
 ]
 
 [project.optional-dependencies]
@@ -24,12 +25,11 @@ dev = [
     "ruff>=0.8",
     "pre-commit>=4.0",
 ]
-# Real browser for the scraper: the catalogue is behind Cloudflare, which 403s
-# plain HTTP clients, so every page is fetched through Playwright Chromium.
-# Optional so the default install and the serving image stay lean: install with
-# `uv pip install -e ".[scrape]"` then `playwright install chromium`.
-scrape = [
-    "playwright>=1.49",
+# Local dense-embedding stack (sentence-transformers pulls torch). Optional so
+# the default install and the serving image stay lean; the data-track commands
+# import it lazily. Install with `uv pip install -e ".[embed]"`.
+embed = [
+    "sentence-transformers>=3.0",
 ]
 
 [build-system]

@@ -47,17 +47,23 @@ rerank (LLM listwise) → grounded generation (Claude, streamed) with citations
 ```
 
 Two tracks run off the shared contracts:
-- **Data (offline):** scrape `hedonism.co.uk/wines` → normalize/enrich → index into Qdrant.
+- **Data (offline):** extract from hand-captured product HTML (`data/cache/html/*.html`,
+  see `data/chrome_capture_prompt.md`) → normalize → index into Qdrant. The site is
+  **not** scraped; `data/extract.py` parses the saved files, `data/index.py` indexes them.
 - **Serving (online):** FastAPI endpoints (`/chat` SSE, `/search`, `/health`) over a static chat page.
 
-### Single provider: OpenRouter
+### Models: OpenRouter for chat, local for embeddings
 
-Every model call — generation (Claude Opus), the cheap utility model
-(query parsing / reranking / eval judge) and embeddings — goes through
-OpenRouter's OpenAI-compatible API. `llm/openrouter.py` is the only place that
-talks to the raw OpenAI SDK; everything else uses `OpenRouterClient`
-(`chat`, `chat_stream`, `embed`) which owns model selection, fallback chains and
-tenacity retries. Do not import `openai` elsewhere.
+Chat calls — generation (Claude Opus) and the cheap utility model (query parsing /
+reranking / eval judge) — go through OpenRouter's OpenAI-compatible API.
+`llm/openrouter.py` is the only place that talks to the raw OpenAI SDK; everything
+else uses `OpenRouterClient` (`chat`, `chat_stream`) which owns model selection,
+fallback chains and tenacity retries. Do not import `openai` elsewhere.
+
+**Embeddings are local** (no OpenRouter): `embeddings/` hosts a sentence-transformers
+model (default `BAAI/bge-base-en-v1.5`, 768-dim) so indexing/retrieval run offline.
+`get_embedder(settings)` picks the backend by `embedding_provider` (`local` default,
+or `openrouter`); the torch stack is an optional `.[embed]` install, imported lazily.
 
 ### Contracts are the backbone
 
