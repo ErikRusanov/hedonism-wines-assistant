@@ -26,7 +26,7 @@ from hedonism_assistant.embeddings import EmbedQueryFn, get_query_embedder
 from hedonism_assistant.logging_config import get_logger
 from hedonism_assistant.models.query import ParsedQuery
 from hedonism_assistant.models.wine import RetrievedWine, Wine
-from hedonism_assistant.retrieval.mmr import mmr_select
+from hedonism_assistant.retrieval.mmr import ScoredCandidate, Vector, mmr_select
 from hedonism_assistant.retrieval.rerank import Reranker, get_reranker
 from hedonism_assistant.vector_store.client import QdrantWineStore, get_wine_store
 from hedonism_assistant.vector_store.filters import build_qdrant_filter
@@ -37,6 +37,15 @@ logger = get_logger(__name__)
 
 class Retriever:
     """Compose hybrid retrieval, reranking and optional MMR into one call."""
+
+    __slots__ = (
+        "_store",
+        "_embed_query",
+        "_reranker",
+        "_settings",
+        "_sparse_encoder",
+        "_sparse_ready",
+    )
 
     def __init__(
         self,
@@ -52,17 +61,14 @@ class Retriever:
         self._reranker = reranker
         self._settings = settings
         self._sparse_encoder = sparse_encoder
-        # None until first lookup; set to False if the persisted encoder is
-        # missing so we degrade to dense-only without retrying every call.
-        self._sparse_loaded = sparse_encoder is not None
+        # "Resolved" means we've either got the encoder or established it's
+        # missing — an injected one is resolved up front; otherwise it loads
+        # lazily on first use and a missing file is remembered (no retry storm).
+        self._sparse_ready = sparse_encoder is not None
 
-    def _sparse_encode(self, text: str) -> tuple[list[int], list[float]] | None:
-        """Encode the query with the persisted encoder; ``None`` if unavailable."""
-        if not self._settings.sparse_enabled:
-            return None
-        if self._sparse_encoder is None and self._sparse_loaded:
-            return None  # already tried and failed to load
-        if self._sparse_encoder is None:
+    def _resolve_encoder(self) -> SparseEncoder | None:
+        """Lazily load (and cache) the persisted sparse encoder, or ``None``."""
+        if not self._sparse_ready:
             try:
                 self._sparse_encoder = SparseEncoder.load(self._settings.sparse_encoder_path)
             except FileNotFoundError:
@@ -71,10 +77,16 @@ class Retriever:
                     path=self._settings.sparse_encoder_path,
                     detail="falling back to dense-only retrieval",
                 )
-                self._sparse_loaded = True
-                return None
-            self._sparse_loaded = True
-        return self._sparse_encoder.encode(text)
+                self._sparse_encoder = None
+            self._sparse_ready = True
+        return self._sparse_encoder
+
+    def _sparse_encode(self, text: str) -> tuple[list[int], list[float]] | None:
+        """Encode the query with the persisted encoder; ``None`` if unavailable."""
+        if not self._settings.sparse_enabled:
+            return None
+        encoder = self._resolve_encoder()
+        return encoder.encode(text) if encoder is not None else None
 
     async def retrieve(self, query: ParsedQuery) -> list[RetrievedWine]:
         """Retrieve, rerank and (optionally) diversify wines for a parsed query."""
@@ -97,7 +109,7 @@ class Retriever:
         )
 
         candidates: list[RetrievedWine] = []
-        vectors_by_id: dict[str, list[float]] = {}
+        vectors_by_id: dict[str, Vector] = {}
         for point in points:
             try:
                 wine = Wine.model_validate(point.payload)
@@ -122,10 +134,10 @@ class Retriever:
         return candidates
 
     def _apply_mmr(
-        self, candidates: list[RetrievedWine], vectors_by_id: dict[str, list[float]]
+        self, candidates: list[RetrievedWine], vectors_by_id: dict[str, Vector]
     ) -> list[RetrievedWine]:
         """Diversify with MMR; skip (and log) if any candidate lacks a vector."""
-        paired: list[tuple[RetrievedWine, list[float]]] = []
+        paired: list[ScoredCandidate] = []
         for candidate in candidates:
             vector = vectors_by_id.get(candidate.wine.id)
             if vector is None:
@@ -136,7 +148,7 @@ class Retriever:
             paired, lambda_=self._settings.mmr_lambda, top_k=self._settings.rerank_top_k
         )
 
-    def _dense_vector_of(self, point: object) -> list[float] | None:
+    def _dense_vector_of(self, point: object) -> Vector | None:
         """Pull the named dense vector off a scored point, if present."""
         vector = getattr(point, "vector", None)
         if isinstance(vector, dict):

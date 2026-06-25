@@ -14,7 +14,7 @@ quality, never an error.
 from __future__ import annotations
 
 import json
-from typing import Protocol
+from typing import Final, Protocol
 
 from openai.types.chat import ChatCompletionMessageParam
 
@@ -22,19 +22,27 @@ from hedonism_assistant.config import RerankerKind, Settings, get_settings
 from hedonism_assistant.llm.openrouter import OpenRouterClient, get_openrouter_client
 from hedonism_assistant.logging_config import get_logger
 from hedonism_assistant.models.wine import RetrievedWine
+from hedonism_assistant.vector_store.payload import normalize_critic_score
 
 logger = get_logger(__name__)
 
 # Cap how much of the (copyrighted) tasting note we feed the reranker per card —
 # enough to judge style, bounded to keep the prompt compact.
-_NOTE_SNIPPET_CHARS = 200
+_NOTE_SNIPPET_CHARS: Final = 200
+
+# A single ranked entry from the model: candidate index plus optional relevance.
+type RankEntry = tuple[int, float | None]
 
 
 def _coerce_score(value: object) -> float | None:
     """Coerce a JSON relevance score to float; reject bools and non-numerics."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return float(value)
+    match value:
+        case bool():
+            return None
+        case int() | float():
+            return float(value)
+        case _:
+            return None
 
 
 _SYSTEM_PROMPT = """\
@@ -60,6 +68,8 @@ class Reranker(Protocol):
 class NoOpReranker:
     """Passthrough reranker: keeps fusion order, just truncates to ``top_k``."""
 
+    __slots__ = ()
+
     async def rerank(
         self, query: str, candidates: list[RetrievedWine], *, top_k: int
     ) -> list[RetrievedWine]:
@@ -68,6 +78,8 @@ class NoOpReranker:
 
 class LLMListwiseReranker:
     """Listwise reranking via the cheap utility model (JSON mode)."""
+
+    __slots__ = ("_client", "_settings")
 
     def __init__(self, client: OpenRouterClient, settings: Settings) -> None:
         self._client = client
@@ -122,7 +134,9 @@ class LLMListwiseReranker:
         wine = candidate.wine
         location = "/".join(p for p in (wine.region, wine.sub_region) if p) or "—"
         grapes = ", ".join(wine.grapes) if wine.grapes else "—"
-        score = max((s.score * 100 / s.scale for s in wine.critic_scores), default=None)
+        score = max(
+            (normalize_critic_score(s.score, s.scale) for s in wine.critic_scores), default=None
+        )
         score_text = f", {score:.0f}/100" if score is not None else ""
         note = (wine.tasting_notes or "").strip().replace("\n", " ")
         if len(note) > _NOTE_SNIPPET_CHARS:
@@ -134,19 +148,20 @@ class LLMListwiseReranker:
         )
 
     @staticmethod
-    def _parse_ranking(raw: str, n_candidates: int) -> list[tuple[int, float | None]]:
+    def _parse_ranking(raw: str, n_candidates: int) -> list[RankEntry]:
         """Parse the model JSON into ``(index, score)`` pairs; drop bad entries."""
         payload = json.loads(raw)
         entries = payload.get("ranking") if isinstance(payload, dict) else None
         if not isinstance(entries, list):
             return []
 
-        ordered: list[tuple[int, float | None]] = []
+        ordered: list[RankEntry] = []
         seen: set[int] = set()
         for entry in entries:
             if not isinstance(entry, dict):
                 continue
             index = entry.get("index")
+            # bool is an int subclass — exclude it so ``true`` isn't read as 1.
             if not isinstance(index, int) or isinstance(index, bool):
                 continue
             if not (0 <= index < n_candidates) or index in seen:
