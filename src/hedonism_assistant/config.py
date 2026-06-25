@@ -17,6 +17,16 @@ class EmbeddingProvider(StrEnum):
     OPENROUTER = "openrouter"
 
 
+class RerankerKind(StrEnum):
+    """Reranking backend. ``LLM`` listwise (via the cheap utility model) is the
+    default — it adds no new service. ``NONE`` disables reranking entirely.
+    Cohere/Voyage rerankers are future drop-ins behind the same protocol.
+    """
+
+    LLM = "llm"
+    NONE = "none"
+
+
 class Settings(BaseSettings):
     """Single source of truth for runtime configuration.
 
@@ -88,6 +98,18 @@ class Settings(BaseSettings):
     # Query understanding (self-query)
     query_parsing_enabled: bool = True
     query_parse_temperature: float = 0.0
+
+    # Retrieval (I-5). Hybrid dense+sparse -> RRF fusion -> rerank -> optional MMR.
+    # Every stage is toggle-gated for tuning; whether the sparse channel is used at
+    # all is governed by the shared ``sparse_enabled`` toggle above (no separate
+    # hybrid flag), so index and query stay in lock-step.
+    retrieve_top_n: int = 40  # candidates fetched from Qdrant before reranking
+    rerank_top_k: int = 8  # final result count after rerank/MMR
+    rerank_enabled: bool = True
+    reranker_kind: RerankerKind = RerankerKind.LLM
+    rerank_temperature: float = 0.0  # deterministic listwise ordering
+    mmr_enabled: bool = False  # diversify the final list (needs candidate vectors)
+    mmr_lambda: float = 0.5  # MMR relevance/diversity trade-off in [0, 1]
 
     @field_validator("generation_fallback_models", "utility_fallback_models", mode="before")
     @classmethod

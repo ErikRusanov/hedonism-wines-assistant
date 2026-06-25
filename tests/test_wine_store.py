@@ -2,8 +2,6 @@
 
 from types import SimpleNamespace
 
-import pytest
-
 from hedonism_assistant.config import Settings
 from hedonism_assistant.vector_store.client import QdrantWineStore, wine_point_id
 
@@ -110,9 +108,5 @@ async def test_upsert_and_count_round_trip() -> None:
     assert await store.count() == 2
 
 
-async def test_query_side_methods_not_implemented_until_i5() -> None:
-    store = _store(_FakeQdrant())
-    with pytest.raises(NotImplementedError):
-        await store.hybrid_query()
-    with pytest.raises(NotImplementedError):
-        await store.dense_query()
+# Query-side behaviour (hybrid_query / dense_query, added in I-5) is exercised in
+# tests/test_retriever.py against a fake client that records the query shape.

@@ -12,17 +12,21 @@ from __future__ import annotations
 
 import uuid
 from functools import lru_cache
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     Distance,
+    Filter,
     Modifier,
     PayloadSchemaType,
     PointStruct,
     SparseVectorParams,
     VectorParams,
 )
+
+if TYPE_CHECKING:
+    from qdrant_client.models import ScoredPoint
 
 from hedonism_assistant.config import Settings, get_settings
 from hedonism_assistant.logging_config import get_logger
@@ -130,11 +134,78 @@ class QdrantWineStore:
         result = await self._client.count(collection_name=self._collection)
         return result.count
 
-    async def hybrid_query(self, *args: object, **kwargs: object) -> object:
-        raise NotImplementedError("added in I-5")
+    async def hybrid_query(
+        self,
+        *,
+        dense_vector: list[float],
+        sparse_indices: list[int] | None,
+        sparse_values: list[float] | None,
+        query_filter: Filter | None,
+        limit: int,
+        with_vectors: bool | list[str] = False,
+    ) -> list[ScoredPoint]:
+        """Dense + sparse retrieval fused with RRF, payload-filtered (I-5).
 
-    async def dense_query(self, *args: object, **kwargs: object) -> object:
-        raise NotImplementedError("added in I-5")
+        Falls back to a plain dense query when the sparse channel is disabled or
+        the query produced no in-vocabulary sparse terms — Qdrant rejects an
+        empty sparse prefetch, so we must not send one.
+        """
+        if not self._settings.sparse_enabled or not sparse_indices:
+            return await self.dense_query(
+                dense_vector=dense_vector,
+                query_filter=query_filter,
+                limit=limit,
+                with_vectors=with_vectors,
+            )
+
+        from qdrant_client.models import Fusion, FusionQuery, Prefetch, SparseVector
+
+        # The filter is replicated into each prefetch branch: with RRF fusion the
+        # top-level query is a fusion directive, not a vector, so a top-level
+        # ``query_filter`` would have nothing to filter.
+        prefetch = [
+            Prefetch(
+                query=dense_vector,
+                using=self._settings.qdrant_dense_vector_name,
+                filter=query_filter,
+                limit=limit,
+            ),
+            Prefetch(
+                query=SparseVector(indices=sparse_indices, values=sparse_values or []),
+                using=self._settings.qdrant_sparse_vector_name,
+                filter=query_filter,
+                limit=limit,
+            ),
+        ]
+        response = await self._client.query_points(
+            collection_name=self._collection,
+            prefetch=prefetch,
+            query=FusionQuery(fusion=Fusion.RRF),
+            limit=limit,
+            with_payload=True,
+            with_vectors=with_vectors,
+        )
+        return response.points
+
+    async def dense_query(
+        self,
+        *,
+        dense_vector: list[float],
+        query_filter: Filter | None,
+        limit: int,
+        with_vectors: bool | list[str] = False,
+    ) -> list[ScoredPoint]:
+        """Dense-only retrieval with payload filtering (I-5)."""
+        response = await self._client.query_points(
+            collection_name=self._collection,
+            query=dense_vector,
+            using=self._settings.qdrant_dense_vector_name,
+            query_filter=query_filter,
+            limit=limit,
+            with_payload=True,
+            with_vectors=with_vectors,
+        )
+        return response.points
 
 
 @lru_cache
