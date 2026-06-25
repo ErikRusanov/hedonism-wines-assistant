@@ -34,3 +34,22 @@ class ChatResponse(BaseModel):
         default_factory=list,
         description="Follow-up clarifications offered when retrieval is weak or empty.",
     )
+
+
+class AnswerChunk(BaseModel):
+    """One streamed slice of answer prose (an SSE token delta)."""
+
+    delta: str
+
+
+class AnswerCompletion(BaseModel):
+    """Terminal stream event carrying the data known only once generation ends."""
+
+    citations: list[WineCitation] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+
+
+# What the generation stage yields: zero+ ``AnswerChunk``s then exactly one
+# ``AnswerCompletion``. The I-7 SSE endpoint serialises these; the same stream
+# collapses into a :class:`ChatResponse` for the non-streaming path.
+type ChatStreamEvent = AnswerChunk | AnswerCompletion

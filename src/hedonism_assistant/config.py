@@ -111,6 +111,14 @@ class Settings(BaseSettings):
     mmr_enabled: bool = False  # diversify the final list (needs candidate vectors)
     mmr_lambda: float = 0.5  # MMR relevance/diversity trade-off in [0, 1]
 
+    # Answer generation (I-6). The retrieved cards are folded into a grounded
+    # prompt and the generation model streams the answer; citations are derived
+    # from inline [n] markers, so these toggles only shape the prompt and prose.
+    generation_temperature: float = 0.3  # a little warmth for natural prose, still grounded
+    generation_context_max_wines: int = 8  # cards folded into the prompt context
+    generation_note_chars: int = 400  # per-card tasting-note cap (token budget + injection surface)
+    generation_max_suggestions: int = 3  # follow-ups offered on out-of-scope / empty retrieval
+
     @field_validator("generation_fallback_models", "utility_fallback_models", mode="before")
     @classmethod
     def _split_csv(cls, value: object) -> object:
