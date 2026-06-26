@@ -58,7 +58,7 @@ Return ONLY a JSON object with this shape (omit fields you cannot fill):
 {
   "semantic_query": string,        // descriptive text for semantic search
   "intent": string,                // one of: recommendation, factual, pairing,
-                                   //         comparison, out_of_scope
+                                   //         comparison, other_drinks, out_of_scope
   "filters": {
     "category": [string],          // still, sparkling, sweet, fortified
     "color": [string],             // red, white, rose
@@ -84,8 +84,16 @@ Rules:
 - Classify intent. Use "pairing" when the user asks what to drink with food,
   "comparison" when contrasting options, "factual" for specific fact lookups,
   "recommendation" otherwise.
-- For non-wine requests, set intent to "out_of_scope", leave filters empty and
-  put a short restatement of the message in semantic_query.
+- Gifts, presents and occasions are wine recommendations — we are a wine shop, so
+  "a present for my dad", "something for a birthday" or "a wine for a dinner party"
+  are "recommendation" (or "pairing" if a dish is named), NOT out_of_scope. Extract
+  any hard constraints (budget, colour) and leave the rest as semantic_query.
+- Use "other_drinks" when the user wants a non-wine drink — spirits, whisky, cognac,
+  brandy, gin, vodka, rum, tequila, liqueur, beer, cider, sake, cocktails or soft
+  drinks. Leave filters empty and restate the request in semantic_query.
+- Use "out_of_scope" only for requests unrelated to wine or drinks (weather, coding,
+  store logistics like delivery, returns or opening hours). Leave filters empty and
+  restate the message in semantic_query.
 
 Examples:
 User: "red Bordeaux under £50"
@@ -96,6 +104,13 @@ User: "elegant Burgundy pinot noir to go with duck, around 2015"
 {"semantic_query": "elegant Burgundy to go with duck", "intent": "pairing",
  "filters": {"region": ["Burgundy"], "grapes": ["Pinot Noir"],
              "vintage_range": {"min": 2015, "max": 2015}}}
+
+User: "a gift for my father, he loves bold reds, around £100"
+{"semantic_query": "bold red wine as a gift for a lover of powerful reds",
+ "intent": "recommendation", "filters": {"color": ["red"], "price_range": {"max": 100}}}
+
+User: "do you have any good whisky?"
+{"semantic_query": "good whisky", "intent": "other_drinks", "filters": {}}
 
 User: "what's the weather like today?"
 {"semantic_query": "what's the weather like today", "intent": "out_of_scope",

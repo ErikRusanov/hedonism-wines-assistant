@@ -1,9 +1,10 @@
-"""Deterministic guardrail responses — out-of-scope and empty retrieval (I-6).
+"""Deterministic guardrail responses — out-of-scope, other drinks, empty retrieval (I-6).
 
-These two edges must never reach the generation model: an off-domain question has
-no wines to ground on, and an empty result set has nothing to answer from. Both
-are handled here with fixed copy and rule-derived follow-ups, which keeps them
-fast, predictable, and free of an LLM call (handy while the API is unfunded).
+These edges must never reach the generation model: an off-domain question has no
+wines to ground on, a non-wine drink belongs to a different catalogue, and an empty
+result set has nothing to answer from. All are handled here with fixed copy and
+rule-derived follow-ups, which keeps them fast, predictable, and free of an LLM call
+(handy while the API is unfunded).
 
 The empty-retrieval suggestions read the *active* filters and propose relaxing the
 most constraining ones first, so the user gets concrete next steps ("raise the
@@ -18,14 +19,29 @@ from typing import Final
 from hedonism_assistant.models.query import WineFilters
 
 OUT_OF_SCOPE_MESSAGE: Final = (
-    "I'm the Hedonism Wines assistant, so I can only help with questions about the "
-    "wine catalogue — finding bottles, styles, regions, vintages, pairings and the like."
+    "I'm the Hedonism Wines assistant, so I can only help with the wine catalogue — "
+    "finding bottles, styles, regions, vintages, pairings and gift ideas. For orders, "
+    "delivery, stock or account questions, please visit hedonism.co.uk or ask their team."
 )
 
 EMPTY_RETRIEVAL_MESSAGE: Final = (
     "I couldn't find any wines in the catalogue matching those criteria. "
     "You could relax some of the constraints and try again."
 )
+
+
+def other_drinks_message(spirits_url: str) -> str:
+    """Redirect a non-wine drink request to Hedonism's spirits range.
+
+    The assistant is grounded in the wine catalogue only, so it points the user to
+    the right place rather than guessing at bottles it cannot see.
+    """
+    return (
+        "I only know the Hedonism wine catalogue, so I can't advise on spirits, beer "
+        "or other drinks. Hedonism does stock a huge range of them, though — you can "
+        f"browse it at {spirits_url}. Happy to help with any wine instead."
+    )
+
 
 # Offered when the user is off-domain, to steer them back toward what we can answer.
 _OUT_OF_SCOPE_SUGGESTIONS: Final = (

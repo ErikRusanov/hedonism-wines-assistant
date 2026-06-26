@@ -131,6 +131,18 @@ async def test_out_of_scope_intent_is_propagated() -> None:
     assert parsed.confident is True
 
 
+async def test_other_drinks_intent_is_propagated() -> None:
+    parser = _parser_returning(
+        {"semantic_query": "good whisky", "intent": "other_drinks", "filters": {}}
+    )
+
+    parsed = await parser.parse("do you have any good whisky?")
+
+    assert parsed.intent is QueryIntent.OTHER_DRINKS
+    assert parsed.filters.region == []
+    assert parsed.confident is True
+
+
 async def test_invalid_intent_defaults_to_recommendation() -> None:
     parser = _parser_returning({"semantic_query": "x", "intent": "nonsense", "filters": {}})
 

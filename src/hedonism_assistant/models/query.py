@@ -16,6 +16,7 @@ class QueryIntent(StrEnum):
     FACTUAL = "factual"
     PAIRING = "pairing"
     COMPARISON = "comparison"
+    OTHER_DRINKS = "other_drinks"  # a non-wine drink (spirits, beer, …): redirect, don't retrieve
     OUT_OF_SCOPE = "out_of_scope"
 
 

@@ -1,12 +1,14 @@
 """Chat orchestration: parse → guardrails → retrieve → generate (I-6).
 
 ``ChatService`` is the in-process seam the serving layer (I-7) will sit behind. It
-ties the existing stages together and owns the two guardrails that must short-
-circuit *before* generation:
+ties the existing stages together and owns the guardrails that must short-circuit
+*before* generation:
 
-1. **Out-of-scope** — if query understanding flags the message as off-domain, we
+1. **Other drinks** — if the user asks about a non-wine drink (spirits, beer, …), we
+   redirect them to Hedonism's spirits range instead of guessing at wines.
+2. **Out-of-scope** — if query understanding flags the message as off-domain, we
    never retrieve or call the model; we return a fixed redirect plus nudges.
-2. **Empty retrieval** — if nothing matches the (filtered) query, there is nothing
+3. **Empty retrieval** — if nothing matches the (filtered) query, there is nothing
    to ground on, so we return a fixed apology plus filter-relaxation suggestions.
 
 Only the happy path reaches the generation model. The service speaks in stream
@@ -25,6 +27,7 @@ from hedonism_assistant.generation.fallbacks import (
     EMPTY_RETRIEVAL_MESSAGE,
     OUT_OF_SCOPE_MESSAGE,
     empty_retrieval_suggestions,
+    other_drinks_message,
     out_of_scope_suggestions,
 )
 from hedonism_assistant.generation.generator import AnswerGenerator, get_generator
@@ -63,6 +66,16 @@ class ChatService:
     async def answer_stream(self, message: str) -> AsyncIterator[ChatStreamEvent]:
         """Stream the answer to ``message`` as chunks then one completion event."""
         parsed = await self._parser.parse(message)
+
+        if parsed.intent is QueryIntent.OTHER_DRINKS:
+            logger.info("chat_other_drinks")
+            yield AnswerChunk(delta=other_drinks_message(self._settings.spirits_url))
+            yield AnswerCompletion(
+                suggestions=out_of_scope_suggestions(
+                    limit=self._settings.generation_max_suggestions
+                )
+            )
+            return
 
         if parsed.intent is QueryIntent.OUT_OF_SCOPE:
             logger.info("chat_out_of_scope")

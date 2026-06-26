@@ -71,6 +71,22 @@ async def test_out_of_scope_short_circuits() -> None:
     assert generator.calls == 0
 
 
+async def test_other_drinks_redirects_to_spirits() -> None:
+    parsed = ParsedQuery(semantic_query="good whisky", intent=QueryIntent.OTHER_DRINKS)
+    retriever = _FakeRetriever([])
+    generator = _FakeGenerator(["should not run"])
+    service = _service(_FakeParser(parsed), retriever, generator)
+
+    response = await service.answer("do you have any good whisky?")
+
+    assert "spirits" in response.answer.lower()
+    assert "hedonism.co.uk/spirits" in response.answer
+    assert response.suggestions  # nudges back toward wine
+    assert response.citations == []
+    assert retriever.calls == 0
+    assert generator.calls == 0
+
+
 async def test_empty_retrieval_skips_generation() -> None:
     parsed = ParsedQuery(
         semantic_query="red Bordeaux",

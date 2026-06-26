@@ -123,6 +123,9 @@ class Settings(BaseSettings):
     generation_context_max_wines: int = 8  # cards folded into the prompt context
     generation_note_chars: int = 400  # per-card tasting-note cap (token budget + injection surface)
     generation_max_suggestions: int = 3  # follow-ups offered on out-of-scope / empty retrieval
+    # Where to send users who ask about non-wine drinks. We only know wine, so the
+    # "other drinks" guardrail redirects them to Hedonism's spirits range.
+    spirits_url: str = "https://hedonism.co.uk/spirits"
 
     @field_validator(
         "generation_fallback_models",

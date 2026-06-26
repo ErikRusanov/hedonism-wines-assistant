@@ -4,10 +4,19 @@ from __future__ import annotations
 
 from hedonism_assistant.generation.fallbacks import (
     empty_retrieval_suggestions,
+    other_drinks_message,
     out_of_scope_suggestions,
 )
 from hedonism_assistant.models.query import PriceRange, VintageRange, WineFilters
 from hedonism_assistant.models.wine import WineColor
+
+
+def test_other_drinks_message_links_to_spirits() -> None:
+    url = "https://hedonism.co.uk/spirits"
+    message = other_drinks_message(url)
+    assert url in message
+    # Sets expectations: we only know wine.
+    assert "wine" in message.lower()
 
 
 def test_out_of_scope_suggestions_capped() -> None:
