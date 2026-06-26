@@ -43,6 +43,7 @@ _CATEGORY_BY_VALUE: dict[str, WineCategory] = {c.casefold(): c for c in WineCate
 
 # Raw JSON key -> the taxonomy dimension that validates it.
 _TAXONOMY_DIMENSIONS: dict[str, TaxonomyDimension] = {
+    "producer": TaxonomyDimension.PRODUCER,
     "country": TaxonomyDimension.COUNTRY,
     "region": TaxonomyDimension.REGION,
     "sub_region": TaxonomyDimension.SUB_REGION,
@@ -62,6 +63,7 @@ Return ONLY a JSON object with this shape (omit fields you cannot fill):
   "filters": {
     "category": [string],          // still, sparkling, sweet, fortified
     "color": [string],             // red, white, rose
+    "producer": [string],          // producer/brand/house, e.g. Dom Pérignon, Sassicaia
     "country": [string],           // e.g. France, Italy
     "region": [string],            // e.g. Bordeaux, Tuscany
     "sub_region": [string],        // appellation, e.g. Pauillac
@@ -75,10 +77,19 @@ Return ONLY a JSON object with this shape (omit fields you cannot fill):
 }
 
 Rules:
-- Extract every HARD constraint into filters: price ("under £50" ->
+- Extract every HARD constraint the user STATES into filters: price ("under £50" ->
   price_range.max=50), vintage ("2015", "before 2010"), region/country/
   sub-region, grape variety, colour, category, bottle size, in-bond, critic
   score ("90+ points" -> min_critic_score=90).
+- When the user names a producer, brand, house or wine (e.g. "Dom Pérignon",
+  "Sassicaia", "Cristal"), put that name in the "producer" filter AND keep it in
+  semantic_query. Use the name exactly as written; it is validated against the
+  catalogue, so a name we do not carry is dropped and falls back to search.
+- NEVER infer OTHER filters from your own knowledge of that wine. Do NOT derive
+  grapes, region, colour or category from a producer or brand. For example, do not
+  add grapes Chardonnay/Pinot Noir just because a Champagne house is named: the
+  catalogue may record such a wine under a blended grape, and a guessed grape filter
+  would wrongly exclude the very wine being asked about.
 - Leave DESCRIPTIVE wishes (style, occasion, food to pair with, mood) in
   semantic_query. Do not turn them into filters.
 - Classify intent. Use "pairing" when the user asks what to drink with food,
@@ -108,6 +119,10 @@ User: "elegant Burgundy pinot noir to go with duck, around 2015"
 User: "a gift for my father, he loves bold reds, around £100"
 {"semantic_query": "bold red wine as a gift for a lover of powerful reds",
  "intent": "recommendation", "filters": {"color": ["red"], "price_range": {"max": 100}}}
+
+User: "tell me about Dom Pérignon, which bottles do you have?"
+{"semantic_query": "Dom Pérignon champagne, available bottles", "intent": "factual",
+ "filters": {"producer": ["Dom Pérignon"]}}
 
 User: "do you have any good whisky?"
 {"semantic_query": "good whisky", "intent": "other_drinks", "filters": {}}

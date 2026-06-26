@@ -39,6 +39,7 @@ async def load_taxonomy(store: QdrantWineStore) -> Taxonomy:
     logger.info(
         "taxonomy_loaded",
         wines=len(wines),
+        producers=len(taxonomy.producers),
         countries=len(taxonomy.countries),
         regions=len(taxonomy.regions),
         sub_regions=len(taxonomy.sub_regions),

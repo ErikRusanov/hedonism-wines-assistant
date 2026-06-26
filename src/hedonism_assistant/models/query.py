@@ -43,6 +43,7 @@ class WineFilters(BaseModel):
 
     category: list[WineCategory] = Field(default_factory=list)
     color: list[WineColor] = Field(default_factory=list)
+    producer: list[str] = Field(default_factory=list)
     country: list[str] = Field(default_factory=list)
     region: list[str] = Field(default_factory=list)
     sub_region: list[str] = Field(default_factory=list)

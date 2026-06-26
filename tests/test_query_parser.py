@@ -70,6 +70,39 @@ async def test_unknown_region_is_dropped_against_taxonomy() -> None:
     assert parsed.filters.region == ["Bordeaux"]
 
 
+async def test_producer_is_validated_against_taxonomy() -> None:
+    # Regression: a producer query must become a hard "producer" filter, matched
+    # diacritic-insensitively against the catalogue ("Dom Pérignon" -> "Dom Perignon").
+    parser = _parser_returning(
+        {
+            "semantic_query": "Dom Pérignon champagne",
+            "intent": "factual",
+            "filters": {"producer": ["Dom Pérignon"]},
+        },
+        taxonomy=Taxonomy(producers=frozenset({"Dom Perignon"})),
+    )
+
+    parsed = await parser.parse("tell me about Dom Pérignon")
+
+    assert parsed.filters.producer == ["Dom Perignon"]
+    assert parsed.intent is QueryIntent.FACTUAL
+
+
+async def test_unknown_producer_is_dropped() -> None:
+    parser = _parser_returning(
+        {
+            "semantic_query": "x",
+            "intent": "factual",
+            "filters": {"producer": ["Chateau Imaginaire"]},
+        },
+        taxonomy=Taxonomy(producers=frozenset({"Dom Perignon"})),
+    )
+
+    parsed = await parser.parse("anything from Chateau Imaginaire?")
+
+    assert parsed.filters.producer == []
+
+
 async def test_broken_json_falls_back_to_pure_semantic() -> None:
     parser = _parser_returning("not json at all {")
 

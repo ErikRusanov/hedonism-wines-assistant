@@ -25,6 +25,12 @@ def test_single_color_is_match_any() -> None:
     assert conds["color"].match.any == ["red"]
 
 
+def test_producer_is_match_any() -> None:
+    # A producer query ("Dom Pérignon") becomes an exact OR-match filter.
+    conds = _conditions(build_qdrant_filter(WineFilters(producer=["Dom Perignon"])))
+    assert conds["producer"].match.any == ["Dom Perignon"]
+
+
 def test_red_bordeaux_under_50_filters_all_three_dimensions() -> None:
     # The acceptance query: colour, region and price must all become hard filters.
     filters = WineFilters(

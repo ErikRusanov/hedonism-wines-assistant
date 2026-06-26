@@ -61,6 +61,7 @@ def _conditions(filters: WineFilters) -> Iterator[FieldCondition | None]:
     """
     yield _match_any("category", [c.value for c in filters.category])
     yield _match_any("color", [c.value for c in filters.color])
+    yield _match_any("producer", filters.producer)
     yield _match_any("country", filters.country)
     yield _match_any("region", filters.region)
     yield _match_any("sub_region", filters.sub_region)

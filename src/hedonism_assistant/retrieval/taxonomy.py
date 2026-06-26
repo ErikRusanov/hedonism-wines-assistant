@@ -13,6 +13,7 @@ pass-through: cleaned values are kept verbatim rather than dropped.
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -20,9 +21,23 @@ from enum import StrEnum
 from hedonism_assistant.models.wine import Wine
 
 
+def _fold(value: str) -> str:
+    """Casefold and strip diacritics for lenient, accent-insensitive matching.
+
+    The catalogue stores producer/region spellings without accents (e.g. "Dom
+    Perignon", "Cotes du Rhone") while a user — or the LLM echoing them — often
+    writes "Dom Pérignon" or "Côtes du Rhône". Folding both sides to a bare ASCII
+    key lets those match; the canonical, accented-or-not catalogue spelling is
+    still what gets returned and filtered on.
+    """
+    decomposed = unicodedata.normalize("NFKD", value)
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch)).casefold()
+
+
 class TaxonomyDimension(StrEnum):
     """Free-text filter dimensions that are validated against the catalogue."""
 
+    PRODUCER = "producer"
     COUNTRY = "country"
     REGION = "region"
     SUB_REGION = "sub_region"
@@ -38,6 +53,7 @@ class Taxonomy:
     that maps back to the canonical spelling stored in the payload.
     """
 
+    producers: frozenset[str] = frozenset()
     countries: frozenset[str] = frozenset()
     regions: frozenset[str] = frozenset()
     sub_regions: frozenset[str] = frozenset()
@@ -49,22 +65,26 @@ class Taxonomy:
 
     def __post_init__(self) -> None:
         members = {
+            TaxonomyDimension.PRODUCER: self.producers,
             TaxonomyDimension.COUNTRY: self.countries,
             TaxonomyDimension.REGION: self.regions,
             TaxonomyDimension.SUB_REGION: self.sub_regions,
             TaxonomyDimension.GRAPE: self.grapes,
         }
         for dimension, values in members.items():
-            self._lookup[dimension] = {v.casefold(): v for v in values}
+            self._lookup[dimension] = {_fold(v): v for v in values}
 
     @classmethod
     def from_wines(cls, wines: Iterable[Wine]) -> Taxonomy:
         """Build a taxonomy from indexed wine cards."""
+        producers: set[str] = set()
         countries: set[str] = set()
         regions: set[str] = set()
         sub_regions: set[str] = set()
         grapes: set[str] = set()
         for wine in wines:
+            if wine.producer:
+                producers.add(wine.producer)
             if wine.country:
                 countries.add(wine.country)
             if wine.region:
@@ -73,6 +93,7 @@ class Taxonomy:
                 sub_regions.add(wine.sub_region)
             grapes.update(g for g in wine.grapes if g)
         return cls(
+            producers=frozenset(producers),
             countries=frozenset(countries),
             regions=frozenset(regions),
             sub_regions=frozenset(sub_regions),
@@ -95,7 +116,7 @@ class Taxonomy:
             cleaned = raw.strip()
             if not cleaned:
                 continue
-            canonical = cleaned if not lookup else lookup.get(cleaned.casefold())
+            canonical = cleaned if not lookup else lookup.get(_fold(cleaned))
             if canonical is None or canonical in seen:
                 continue
             seen.add(canonical)

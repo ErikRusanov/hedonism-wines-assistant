@@ -6,17 +6,45 @@ from tests.fixtures.wines import make_wine
 
 def test_from_wines_collects_distinct_values() -> None:
     wines = [
-        make_wine(country="France", region="Bordeaux", sub_region="Pauillac", grapes=["Merlot"]),
-        make_wine(country="France", region="Burgundy", grapes=["Pinot Noir", "Merlot"]),
+        make_wine(
+            producer="Pichon Lalande",
+            country="France",
+            region="Bordeaux",
+            sub_region="Pauillac",
+            grapes=["Merlot"],
+        ),
+        make_wine(
+            producer="Domaine Leflaive",
+            country="France",
+            region="Burgundy",
+            grapes=["Pinot Noir", "Merlot"],
+        ),
         make_wine(country="Italy", region="Tuscany", grapes=[]),
     ]
 
     taxonomy = Taxonomy.from_wines(wines)
 
+    assert taxonomy.producers == frozenset({"Pichon Lalande", "Domaine Leflaive"})
     assert taxonomy.countries == frozenset({"France", "Italy"})
     assert taxonomy.regions == frozenset({"Bordeaux", "Burgundy", "Tuscany"})
     assert taxonomy.sub_regions == frozenset({"Pauillac"})
     assert taxonomy.grapes == frozenset({"Merlot", "Pinot Noir"})
+
+
+def test_canonicalize_is_diacritic_insensitive() -> None:
+    # The catalogue stores "Dom Perignon" (no accent); a user/LLM writes the
+    # accented form. Folding lets them match and returns the canonical spelling.
+    taxonomy = Taxonomy(producers=frozenset({"Dom Perignon"}))
+
+    assert taxonomy.canonicalize(TaxonomyDimension.PRODUCER, ["Dom Pérignon"]) == ["Dom Perignon"]
+
+
+def test_canonicalize_drops_unknown_producer() -> None:
+    # A hallucinated producer is dropped, degrading to pure semantic search
+    # rather than silently zeroing out retrieval with a bogus hard filter.
+    taxonomy = Taxonomy(producers=frozenset({"Dom Perignon"}))
+
+    assert taxonomy.canonicalize(TaxonomyDimension.PRODUCER, ["Chateau Imaginaire"]) == []
 
 
 def test_canonicalize_is_case_insensitive() -> None:
