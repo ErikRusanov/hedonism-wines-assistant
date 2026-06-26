@@ -34,6 +34,7 @@ from hedonism_assistant.models.chat import (
     AnswerCompletion,
     ChatResponse,
     ChatStreamEvent,
+    WineCitation,
 )
 from hedonism_assistant.models.query import QueryIntent
 from hedonism_assistant.retrieval.query_parser import QueryParser, get_query_parser
@@ -95,7 +96,7 @@ class ChatService:
     async def answer(self, message: str) -> ChatResponse:
         """Collect the stream into a non-streaming :class:`ChatResponse`."""
         parts: list[str] = []
-        citations = []
+        citations: list[WineCitation] = []
         suggestions: list[str] = []
         async for event in self.answer_stream(message):
             match event:

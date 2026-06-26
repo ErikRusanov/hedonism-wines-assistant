@@ -12,29 +12,34 @@ budget", "broaden beyond Bordeaux") rather than a generic apology.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from typing import Final
+
 from hedonism_assistant.models.query import WineFilters
 
-OUT_OF_SCOPE_MESSAGE = (
+OUT_OF_SCOPE_MESSAGE: Final = (
     "I'm the Hedonism Wines assistant, so I can only help with questions about the "
     "wine catalogue — finding bottles, styles, regions, vintages, pairings and the like."
 )
 
-EMPTY_RETRIEVAL_MESSAGE = (
+EMPTY_RETRIEVAL_MESSAGE: Final = (
     "I couldn't find any wines in the catalogue matching those criteria. "
     "You could relax some of the constraints and try again."
 )
 
 # Offered when the user is off-domain, to steer them back toward what we can answer.
-_OUT_OF_SCOPE_SUGGESTIONS = [
+_OUT_OF_SCOPE_SUGGESTIONS: Final = (
     "Ask for a wine by style, region or grape, e.g. 'a bold red Bordeaux under £80'.",
     "Ask what to drink with a dish, e.g. 'a white to pair with roast chicken'.",
     "Ask about a specific bottle's vintage, price or critic scores.",
-]
+)
+
+_GENERIC_RELAXATION: Final = "Try describing the wine differently or with broader terms."
 
 
 def out_of_scope_suggestions(*, limit: int) -> list[str]:
     """Static nudges back toward in-scope wine questions, capped at ``limit``."""
-    return _OUT_OF_SCOPE_SUGGESTIONS[: max(limit, 0)]
+    return list(_OUT_OF_SCOPE_SUGGESTIONS[: max(limit, 0)])
 
 
 def empty_retrieval_suggestions(filters: WineFilters, *, limit: int) -> list[str]:
@@ -43,13 +48,11 @@ def empty_retrieval_suggestions(filters: WineFilters, *, limit: int) -> list[str
     Falls back to a generic broadening hint when the query carried no hard
     filters (a purely semantic miss).
     """
-    suggestions = list(_relaxations(filters))
-    if not suggestions:
-        suggestions.append("Try describing the wine differently or with broader terms.")
+    suggestions = list(_relaxations(filters)) or [_GENERIC_RELAXATION]
     return suggestions[: max(limit, 0)]
 
 
-def _relaxations(filters: WineFilters):
+def _relaxations(filters: WineFilters) -> Iterator[str]:
     """Yield human relaxation hints for whichever filters are set."""
     if filters.price_range and filters.price_range.max is not None:
         yield f"Raise your budget above £{filters.price_range.max:.0f}."

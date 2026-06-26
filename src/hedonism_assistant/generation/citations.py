@@ -15,12 +15,13 @@ which cards it actually used.
 from __future__ import annotations
 
 import re
+from typing import Final
 
 from hedonism_assistant.models.chat import WineCitation
 from hedonism_assistant.models.wine import RetrievedWine
 
 # A 1-based bracket marker like ``[2]`` referencing a card in the numbered prompt.
-_MARKER = re.compile(r"\[(\d+)\]")
+_MARKER: Final = re.compile(r"\[(\d+)\]")
 
 
 def extract_citations(answer: str, retrieved: list[RetrievedWine]) -> list[WineCitation]:

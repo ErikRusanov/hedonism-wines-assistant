@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from functools import lru_cache
+from typing import Final
 
 from openai.types.chat import ChatCompletionMessageParam
 
@@ -33,7 +34,10 @@ from hedonism_assistant.vector_store.payload import normalize_critic_score
 
 logger = get_logger(__name__)
 
-_SYSTEM_PROMPT = """\
+# Rendered when a card lacks a field, keeping every line shape-stable for the model.
+_MISSING: Final = "—"
+
+_SYSTEM_PROMPT: Final = """\
 You are the Hedonism Wines assistant. You answer questions about wines using ONLY
 the catalogue cards provided in the user's message, which appear between the
 <wines> and </wines> markers as a numbered list.
@@ -75,32 +79,41 @@ class AnswerGenerator:
         Only the first ``generation_context_max_wines`` cards reach the prompt; the
         retriever has already ranked them, so this is a context-budget cap.
         """
-        cards = retrieved[: self._settings.generation_context_max_wines]
+        settings = self._settings
+        cards = retrieved[: settings.generation_context_max_wines]
         messages: list[ChatCompletionMessageParam] = [
             {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": self._build_user_message(query, cards)},
+            {
+                "role": "user",
+                "content": self._build_user_message(query, cards, settings.generation_note_chars),
+            },
         ]
         async for delta in self._client.chat_stream(
             messages,
-            model=self._settings.generation_model,
-            temperature=self._settings.generation_temperature,
+            model=settings.generation_model,
+            temperature=settings.generation_temperature,
         ):
             yield delta
 
-    def _build_user_message(self, query: ParsedQuery, cards: list[RetrievedWine]) -> str:
+    @classmethod
+    def _build_user_message(
+        cls, query: ParsedQuery, cards: list[RetrievedWine], note_chars: int
+    ) -> str:
         """Compose the user turn: the question, the intent, and the fenced cards."""
-        listing = "\n".join(self._render_card(i, c) for i, c in enumerate(cards, start=1))
+        listing = "\n".join(
+            cls._render_card(i, c, note_chars) for i, c in enumerate(cards, start=1)
+        )
         return (
             f"Question: {query.semantic_query}\n"
             f"Intent: {query.intent}\n\n"
             f"<wines>\n{listing}\n</wines>"
         )
 
-    def _render_card(self, index: int, candidate: RetrievedWine) -> str:
+    @classmethod
+    def _render_card(cls, index: int, candidate: RetrievedWine, note_chars: int) -> str:
         """One numbered, length-bounded context card for a retrieved wine."""
         wine = candidate.wine
-        location = "/".join(p for p in (wine.country, wine.region, wine.sub_region) if p) or "—"
-        grapes = ", ".join(wine.grapes) if wine.grapes else "—"
+        location = "/".join(p for p in (wine.country, wine.region, wine.sub_region) if p)
         descriptor = ", ".join(p for p in (wine.color, wine.category) if p)
         score = max(
             (normalize_critic_score(s.score, s.scale) for s in wine.critic_scores),
@@ -109,21 +122,20 @@ class AnswerGenerator:
         score_text = f", best critic score {score:.0f}/100" if score is not None else ""
         bits = [
             f"[{index}] {wine.name}",
-            f"producer: {wine.producer or '—'}",
-            f"origin: {location}",
-            f"grapes: {grapes}",
-            f"type: {descriptor or '—'}",
+            f"producer: {wine.producer or _MISSING}",
+            f"origin: {location or _MISSING}",
+            f"grapes: {', '.join(wine.grapes) or _MISSING}",
+            f"type: {descriptor or _MISSING}",
             f"£{wine.price:.0f}{score_text}",
         ]
-        note = self._note_snippet(wine.tasting_notes)
-        if note:
+        if note := cls._note_snippet(wine.tasting_notes, note_chars):
             bits.append(f"notes: {note}")
         return " | ".join(bits)
 
-    def _note_snippet(self, note: str | None) -> str:
+    @staticmethod
+    def _note_snippet(note: str | None, cap: int) -> str:
         """Collapse and length-cap a (copyrighted) tasting note for the prompt."""
         text = (note or "").strip().replace("\n", " ")
-        cap = self._settings.generation_note_chars
         if len(text) > cap:
             text = text[:cap].rstrip() + "…"
         return text
