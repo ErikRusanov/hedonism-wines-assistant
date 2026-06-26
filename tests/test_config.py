@@ -37,3 +37,13 @@ def test_indexing_defaults_match_frozen_contract() -> None:
     assert settings.sparse_enabled is True
     assert settings.sparse_encoder_path == "data/sparse_encoder.json"
     assert settings.index_batch_size == 128
+
+
+def test_cors_allow_origins_default_is_permissive() -> None:
+    assert Settings(_env_file=None).cors_allow_origins == ["*"]
+
+
+def test_cors_allow_origins_parse_from_csv(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CORS_ALLOW_ORIGINS", "https://a.example, https://b.example")
+    settings = Settings(_env_file=None)
+    assert settings.cors_allow_origins == ["https://a.example", "https://b.example"]

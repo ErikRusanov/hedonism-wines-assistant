@@ -17,6 +17,7 @@ class _FakeQdrant:
         self.created_vectors: dict[str, object] | None = None
         self.created_sparse: dict[str, object] | None = None
         self.points: dict[object, object] = {}
+        self.seed_payloads: list[dict] = []
 
     async def collection_exists(self, collection_name: str) -> bool:
         return self._exists
@@ -47,6 +48,19 @@ class _FakeQdrant:
 
     async def count(self, collection_name: str) -> object:
         return SimpleNamespace(count=len(self.points))
+
+    async def scroll(
+        self,
+        collection_name: str,
+        with_payload: bool = True,
+        with_vectors: bool = False,
+        limit: int = 256,
+        offset: object = None,
+    ) -> tuple[list[object], object]:
+        start = offset or 0
+        page = self.seed_payloads[start : start + limit]
+        nxt = start + limit if start + limit < len(self.seed_payloads) else None
+        return [SimpleNamespace(payload=p) for p in page], nxt
 
 
 def _store(fake: _FakeQdrant) -> QdrantWineStore:
@@ -106,6 +120,14 @@ async def test_upsert_and_count_round_trip() -> None:
     points = [SimpleNamespace(id=wine_point_id("HED1")), SimpleNamespace(id=wine_point_id("HED2"))]
     await store.upsert_wines(points)
     assert await store.count() == 2
+
+
+async def test_scroll_payloads_pages_through_collection() -> None:
+    fake = _FakeQdrant()
+    fake.seed_payloads = [{"id": f"HED{i}"} for i in range(5)]
+    store = _store(fake)
+    got = [payload async for payload in store.scroll_payloads(batch=2)]
+    assert [p["id"] for p in got] == [f"HED{i}" for i in range(5)]
 
 
 # Query-side behaviour (hybrid_query / dense_query, added in I-5) is exercised in

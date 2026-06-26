@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 60.0
     max_retries: int = 3
 
+    # Serving (I-7). CORS origins for the chat page / API. Permissive by default
+    # for the demo; tighten to specific origins in production (I-9). Accepts a
+    # comma-separated string in the environment (see the CSV validator below).
+    cors_allow_origins: Annotated[list[str], NoDecode] = Field(default_factory=lambda: ["*"])
+
     # Data extraction (offline). The catalogue is no longer scraped: product-page
     # HTML is captured by hand (see data/chrome_capture_prompt.md) and dropped as
     # <slug>.html files in the cache below. `extract` parses + normalizes them into
@@ -119,7 +124,12 @@ class Settings(BaseSettings):
     generation_note_chars: int = 400  # per-card tasting-note cap (token budget + injection surface)
     generation_max_suggestions: int = 3  # follow-ups offered on out-of-scope / empty retrieval
 
-    @field_validator("generation_fallback_models", "utility_fallback_models", mode="before")
+    @field_validator(
+        "generation_fallback_models",
+        "utility_fallback_models",
+        "cors_allow_origins",
+        mode="before",
+    )
     @classmethod
     def _split_csv(cls, value: object) -> object:
         """Allow comma-separated strings for list-valued settings."""

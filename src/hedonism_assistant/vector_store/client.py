@@ -11,6 +11,7 @@ in by I-5.
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncIterator
 from functools import lru_cache
 from typing import TYPE_CHECKING, Final
 
@@ -133,6 +134,28 @@ class QdrantWineStore:
         """Return the number of points in the collection."""
         result = await self._client.count(collection_name=self._collection)
         return result.count
+
+    async def scroll_payloads(self, *, batch: int = 256) -> AsyncIterator[dict]:
+        """Yield every point's payload, paging through the whole collection.
+
+        Used by the serving layer (I-7) to rebuild the catalogue taxonomy from
+        the live index. Payloads only — no vectors — since the taxonomy is built
+        from :class:`Wine` fields.
+        """
+        offset = None
+        while True:
+            points, offset = await self._client.scroll(
+                collection_name=self._collection,
+                with_payload=True,
+                with_vectors=False,
+                limit=batch,
+                offset=offset,
+            )
+            for point in points:
+                if point.payload is not None:
+                    yield point.payload
+            if offset is None:
+                break
 
     async def hybrid_query(
         self,

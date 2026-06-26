@@ -8,6 +8,7 @@ from hedonism_assistant.models.query import (
     VintageRange,
     WineFilters,
 )
+from hedonism_assistant.models.search import SearchHit, SearchRequest, SearchResponse
 from hedonism_assistant.models.wine import (
     Availability,
     CriticScore,
@@ -32,4 +33,7 @@ __all__ = [
     "ChatRequest",
     "ChatResponse",
     "WineCitation",
+    "SearchRequest",
+    "SearchResponse",
+    "SearchHit",
 ]

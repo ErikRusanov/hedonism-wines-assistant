@@ -118,6 +118,15 @@ class QueryParser:
         # the parser works before any data is indexed.
         self._taxonomy = taxonomy or Taxonomy()
 
+    def set_taxonomy(self, taxonomy: Taxonomy) -> None:
+        """Replace the validation taxonomy (late-injected from the live index in I-7).
+
+        The cached parser singleton is built with an empty pass-through taxonomy;
+        the serving layer loads the real catalogue taxonomy on startup and calls
+        this so subsequent filter coercion validates against indexed values.
+        """
+        self._taxonomy = taxonomy
+
     async def parse(self, message: str) -> ParsedQuery:
         """Parse ``message``; never raises, always returns a usable query."""
         if not self._settings.query_parsing_enabled:
