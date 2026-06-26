@@ -27,8 +27,13 @@ htmlcov/
 
 # Data artifacts (scraped / enriched datasets, raw caches).
 # Anchored to the repo root so it does NOT match the src/.../data/ package.
-/data/
+# Glob the contents (not the dir) so the curated golden set can be re-included.
+/data/*
 *.jsonl
+
+# The golden eval set is curated test data, not a generated artifact — keep it
+# version-controlled. Re-included after the /data/ and *.jsonl ignores above.
+!/data/golden_set.jsonl
 
 # Qdrant local storage
 qdrant_storage/

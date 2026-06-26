@@ -27,6 +27,7 @@ from hedonism_assistant.generation.fallbacks import (
     EMPTY_RETRIEVAL_MESSAGE,
     OUT_OF_SCOPE_MESSAGE,
     empty_retrieval_suggestions,
+    low_confidence_suggestions,
     other_drinks_message,
     out_of_scope_suggestions,
 )
@@ -103,8 +104,20 @@ class ChatService:
             parts.append(delta)
             yield AnswerChunk(delta=delta)
 
+        # When query understanding was unsure (a parse failure or ambiguous ask),
+        # we still answered from pure semantics, but steer the user to disambiguate
+        # so the next turn can filter precisely.
+        suggestions: list[str] = []
+        if not parsed.confident:
+            logger.info("chat_low_confidence")
+            suggestions = low_confidence_suggestions(
+                limit=self._settings.generation_max_suggestions
+            )
+
         answer = "".join(parts)
-        yield AnswerCompletion(citations=extract_citations(answer, retrieved))
+        yield AnswerCompletion(
+            citations=extract_citations(answer, retrieved), suggestions=suggestions
+        )
 
     async def answer(self, message: str) -> ChatResponse:
         """Collect the stream into a non-streaming :class:`ChatResponse`."""

@@ -1,0 +1,20 @@
+{"id": "G001", "question": "A bold red Bordeaux under £100", "expected_intent": "recommendation", "relevance": {"color": ["red"], "region": ["Bordeaux"], "price_range": {"max": 100}}}
+{"id": "G002", "question": "A crisp white Burgundy for around £70", "expected_intent": "recommendation", "relevance": {"color": ["white"], "region": ["Burgundy"], "price_range": {"max": 80}}}
+{"id": "G003", "question": "An Italian red from Tuscany", "expected_intent": "recommendation", "relevance": {"color": ["red"], "country": ["Italy"], "region": ["Tuscany"]}}
+{"id": "G004", "question": "A Champagne under £120 for a celebration", "expected_intent": "recommendation", "relevance": {"category": ["sparkling"], "region": ["Champagne"], "price_range": {"max": 120}}}
+{"id": "G005", "question": "A sweet dessert wine to finish a meal", "expected_intent": "recommendation", "relevance": {"category": ["sweet"]}}
+{"id": "G006", "question": "A red Burgundy made from Pinot Noir", "expected_intent": "recommendation", "relevance": {"color": ["red"], "region": ["Burgundy"], "grapes": ["Pinot Noir"]}}
+{"id": "G007", "question": "An affordable everyday red under £30", "expected_intent": "recommendation", "relevance": {"color": ["red"], "price_range": {"max": 30}}}
+{"id": "G008", "question": "A highly rated red with a critic score of at least 95", "expected_intent": "recommendation", "relevance": {"color": ["red"], "min_critic_score": 95}}
+{"id": "G009", "question": "A red wine to go with a ribeye steak", "expected_intent": "pairing", "relevance": {"color": ["red"]}}
+{"id": "G010", "question": "A white wine to pair with oysters", "expected_intent": "pairing", "relevance": {"color": ["white"]}}
+{"id": "G011", "question": "A bottle of red Burgundy to pair with roast duck", "expected_intent": "pairing", "relevance": {"color": ["red"], "region": ["Burgundy"]}}
+{"id": "G012", "question": "Tell me about a first-growth Pauillac from Bordeaux", "expected_intent": "factual", "relevance": {"color": ["red"], "region": ["Bordeaux"], "sub_region": ["Pauillac"]}}
+{"id": "G013", "question": "What sparkling wines do you stock from Champagne?", "expected_intent": "factual", "relevance": {"category": ["sparkling"], "region": ["Champagne"]}}
+{"id": "G014", "question": "Compare red wines from Bordeaux and Burgundy under £200", "expected_intent": "comparison", "relevance": {"color": ["red"], "country": ["France"], "price_range": {"max": 200}}}
+{"id": "G015", "question": "Barolo or Brunello — which Italian red should I pick?", "expected_intent": "comparison", "relevance": {"color": ["red"], "country": ["Italy"]}}
+{"id": "G016", "question": "Do you have any good single malt whisky?", "expected_intent": "other_drinks", "expected_fallback": "other_drinks"}
+{"id": "G017", "question": "Can you recommend a craft beer?", "expected_intent": "other_drinks", "expected_fallback": "other_drinks"}
+{"id": "G018", "question": "What's the weather like today?", "expected_intent": "out_of_scope", "expected_fallback": "out_of_scope"}
+{"id": "G019", "question": "How do I track my delivery order?", "expected_intent": "out_of_scope", "expected_fallback": "out_of_scope"}
+{"id": "G020", "question": "A red Bordeaux first growth under £5", "expected_intent": "recommendation", "expected_fallback": "empty"}

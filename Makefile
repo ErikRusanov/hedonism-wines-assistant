@@ -1,4 +1,4 @@
-.PHONY: help setup embed-setup run test format data index
+.PHONY: help setup embed-setup run test format data index eval
 .DEFAULT_GOAL := help
 
 # Data-track parameters, overridable on the command line. Examples:
@@ -6,8 +6,11 @@
 #   make data LIMIT=50           # extract the first 50 HTML files
 #   make index                   # embed + index the enriched cards into Qdrant
 #   make index RECREATE=1        # drop + rebuild the Qdrant collection
+#   make eval                    # run the golden-set regression harness
+#   make eval NOJUDGE=1          # retrieval metrics only (network-light)
 LIMIT   ?=                  # cap records processed (empty = full run)
 RECREATE ?=                 # set to 1 to drop+rebuild the Qdrant collection (index)
+NOJUDGE ?=                  # set to 1 to skip the LLM judge (eval, retrieval-only)
 
 # Show this help (targets are documented with '##' comments).
 help:
@@ -53,3 +56,12 @@ index: ## Index enriched cards into Qdrant — LIMIT/RECREATE
 	docker compose up -d qdrant
 	uv run python -m hedonism_assistant.data.index --log-console \
 		$(if $(LIMIT),--limit $(LIMIT)) $(if $(RECREATE),--recreate)
+
+# Run the golden-set regression harness against the live Qdrant index: retrieval
+# metrics (hit@k, MRR) + LLM-judge answer quality, writing data/eval_report.json
+# with pass/fail thresholds (non-zero exit on a miss). Unlike data/index, the
+# judge needs network + a funded OpenRouter key; NOJUDGE=1 is retrieval-only.
+eval: ## Run the golden-set eval harness against live Qdrant — LIMIT/NOJUDGE
+	docker compose up -d qdrant
+	uv run python -m hedonism_assistant.eval.run --log-console \
+		$(if $(LIMIT),--limit $(LIMIT)) $(if $(NOJUDGE),--no-judge)

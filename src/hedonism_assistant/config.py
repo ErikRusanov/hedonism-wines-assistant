@@ -127,6 +127,20 @@ class Settings(BaseSettings):
     # "other drinks" guardrail redirects them to Hedonism's spirits range.
     spirits_url: str = "https://hedonism.co.uk/spirits"
 
+    # Evaluation (I-8). The golden-set regression harness runs the live pipeline
+    # over data/golden_set.jsonl and scores retrieval (hit@k, MRR) plus answer
+    # quality via the utility model as LLM-judge (faithfulness, answer relevancy).
+    # Thresholds gate the run: ``make eval`` exits non-zero when a mean falls
+    # below its bound. The judge reuses ``utility_model`` (no separate slug).
+    golden_set_path: str = "data/golden_set.jsonl"
+    eval_report_path: str = "data/eval_report.json"
+    eval_judge_enabled: bool = True  # call the LLM judge; off = retrieval-only
+    eval_judge_temperature: float = 0.0  # deterministic judging
+    eval_min_hit_at_k: float = 0.80
+    eval_min_mrr: float = 0.60
+    eval_min_faithfulness: float = 0.85
+    eval_min_answer_relevancy: float = 0.70
+
     @field_validator(
         "generation_fallback_models",
         "utility_fallback_models",

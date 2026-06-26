@@ -113,25 +113,59 @@ class OpenRouterClient:
         messages: Iterable[ChatCompletionMessageParam],
         *,
         model: str | None = None,
+        fallback_models: Sequence[str] | None = None,
         temperature: float = 0.2,
         **kwargs: object,
     ) -> AsyncIterator[str]:
         """Yield answer tokens as they arrive (used by the SSE endpoint).
 
-        Streaming responses are not transparently retried mid-stream; a failure
-        before the first token surfaces to the caller.
+        Each model in the fallback chain is tried until one *starts* streaming:
+        a failure before the first token degrades to the next model, so a dead
+        primary degrades gracefully instead of surfacing a 503. Once the first
+        token has been yielded the stream is committed — a mid-stream failure is
+        not retried and surfaces to the caller (we can't un-send tokens).
         """
-        stream = await self._client.chat.completions.create(
-            model=model or self._settings.generation_model,
-            messages=list(messages),
+        fallbacks = (
+            fallback_models
+            if fallback_models is not None
+            else self._settings.generation_fallback_models
+        )
+        chain = [model or self._settings.generation_model, *fallbacks]
+        payload = list(messages)
+
+        last_error: Exception | None = None
+        for candidate in chain:
+            try:
+                stream = await self._create_stream(candidate, payload, temperature, **kwargs)
+                first = await _first_delta(stream)
+            except RETRYABLE_ERRORS as exc:
+                last_error = exc
+                logger.warning("chat_stream_model_failed", model=candidate, error=str(exc))
+                continue
+            if first is not None:
+                yield first
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    yield delta
+            return
+        raise RuntimeError("all chat stream models in the fallback chain failed") from last_error
+
+    async def _create_stream(
+        self,
+        model: str,
+        messages: list[ChatCompletionMessageParam],
+        temperature: float,
+        **kwargs: object,
+    ) -> AsyncIterator[object]:
+        """Open a streaming completion (its own seam so tests can stub it)."""
+        return await self._client.chat.completions.create(
+            model=model,
+            messages=messages,
             temperature=temperature,
             stream=True,
             **kwargs,
         )
-        async for chunk in stream:
-            delta = chunk.choices[0].delta.content if chunk.choices else None
-            if delta:
-                yield delta
 
     async def embed(
         self,
@@ -148,6 +182,21 @@ class OpenRouterClient:
             return [item.embedding for item in response.data]
 
         return await self._with_retry(_create)
+
+
+async def _first_delta(stream: AsyncIterator[object]) -> str | None:
+    """Advance ``stream`` to its first non-empty content delta, or ``None``.
+
+    Errors raised while pulling the first token propagate to the caller's
+    fallback boundary; a clean stream with no content returns ``None`` (an empty
+    answer is not a failure and must not trigger a fallback).
+    """
+    async for chunk in stream:
+        choices = getattr(chunk, "choices", None)
+        delta = choices[0].delta.content if choices else None
+        if delta:
+            return delta
+    return None
 
 
 @lru_cache

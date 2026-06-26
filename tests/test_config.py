@@ -39,6 +39,18 @@ def test_indexing_defaults_match_frozen_contract() -> None:
     assert settings.index_batch_size == 128
 
 
+def test_eval_defaults() -> None:
+    settings = Settings(_env_file=None)
+    assert settings.golden_set_path == "data/golden_set.jsonl"
+    assert settings.eval_report_path == "data/eval_report.json"
+    assert settings.eval_judge_enabled is True
+    assert settings.eval_judge_temperature == 0.0
+    assert settings.eval_min_hit_at_k == 0.80
+    assert settings.eval_min_mrr == 0.60
+    assert settings.eval_min_faithfulness == 0.85
+    assert settings.eval_min_answer_relevancy == 0.70
+
+
 def test_cors_allow_origins_default_is_permissive() -> None:
     assert Settings(_env_file=None).cors_allow_origins == ["*"]
 

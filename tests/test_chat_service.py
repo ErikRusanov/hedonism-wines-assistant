@@ -121,6 +121,33 @@ async def test_happy_path_assembles_answer_and_citations() -> None:
     assert response.suggestions == []
 
 
+async def test_low_confidence_attaches_disambiguation_suggestions() -> None:
+    parsed = ParsedQuery(
+        semantic_query="something nice",
+        intent=QueryIntent.RECOMMENDATION,
+        confident=False,
+    )
+    generator = _FakeGenerator(["The Pichon [1] is lovely."])
+    service = _service(_FakeParser(parsed), _FakeRetriever(_retrieved()), generator)
+
+    response = await service.answer("something nice")
+
+    # Still answered from semantics, but nudges the user to narrow down.
+    assert response.answer == "The Pichon [1] is lovely."
+    assert response.suggestions  # disambiguation hints offered
+    assert response.citations  # and citations still extracted
+
+
+async def test_confident_happy_path_has_no_extra_suggestions() -> None:
+    parsed = ParsedQuery(semantic_query="red Bordeaux", intent=QueryIntent.RECOMMENDATION)
+    generator = _FakeGenerator(["The Pichon [1] is superb."])
+    service = _service(_FakeParser(parsed), _FakeRetriever(_retrieved()), generator)
+
+    response = await service.answer("a red Bordeaux")
+
+    assert response.suggestions == []
+
+
 async def test_stream_emits_chunks_then_one_completion() -> None:
     parsed = ParsedQuery(semantic_query="q", intent=QueryIntent.RECOMMENDATION)
     generator = _FakeGenerator(["a ", "b ", "c [1]"])

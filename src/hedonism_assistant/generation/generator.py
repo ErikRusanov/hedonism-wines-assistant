@@ -103,6 +103,7 @@ class AnswerGenerator:
         async for delta in self._client.chat_stream(
             messages,
             model=settings.generation_model,
+            fallback_models=settings.generation_fallback_models,
             temperature=settings.generation_temperature,
         ):
             yield delta

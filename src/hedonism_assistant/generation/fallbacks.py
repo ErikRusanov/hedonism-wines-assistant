@@ -52,10 +52,24 @@ _OUT_OF_SCOPE_SUGGESTIONS: Final = (
 
 _GENERIC_RELAXATION: Final = "Try describing the wine differently or with broader terms."
 
+# Offered on the happy path when query understanding was not confident (a parse
+# failure or an ambiguous message): we still answered, but nudge the user to
+# disambiguate so the next turn can filter precisely.
+_LOW_CONFIDENCE_SUGGESTIONS: Final = (
+    "Tell me a colour or style — red, white, sparkling or sweet.",
+    "Give me a budget, e.g. 'under £80'.",
+    "Name a region or grape you like, e.g. 'Burgundy' or 'Nebbiolo'.",
+)
+
 
 def out_of_scope_suggestions(*, limit: int) -> list[str]:
     """Static nudges back toward in-scope wine questions, capped at ``limit``."""
     return list(_OUT_OF_SCOPE_SUGGESTIONS[: max(limit, 0)])
+
+
+def low_confidence_suggestions(*, limit: int) -> list[str]:
+    """Disambiguation nudges offered when the query parse was low-confidence."""
+    return list(_LOW_CONFIDENCE_SUGGESTIONS[: max(limit, 0)])
 
 
 def empty_retrieval_suggestions(filters: WineFilters, *, limit: int) -> list[str]:
