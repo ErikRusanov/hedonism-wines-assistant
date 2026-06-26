@@ -13,12 +13,12 @@ quality, never an error.
 
 from __future__ import annotations
 
-import json
 from typing import Final, Protocol
 
 from openai.types.chat import ChatCompletionMessageParam
 
 from hedonism_assistant.config import RerankerKind, Settings, get_settings
+from hedonism_assistant.llm.json_output import loads_json
 from hedonism_assistant.llm.openrouter import OpenRouterClient, get_openrouter_client
 from hedonism_assistant.logging_config import get_logger
 from hedonism_assistant.models.wine import RetrievedWine
@@ -150,7 +150,7 @@ class LLMListwiseReranker:
     @staticmethod
     def _parse_ranking(raw: str, n_candidates: int) -> list[RankEntry]:
         """Parse the model JSON into ``(index, score)`` pairs; drop bad entries."""
-        payload = json.loads(raw)
+        payload = loads_json(raw)
         entries = payload.get("ranking") if isinstance(payload, dict) else None
         if not isinstance(entries, list):
             return []

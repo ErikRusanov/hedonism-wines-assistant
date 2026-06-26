@@ -14,7 +14,6 @@ than rejecting the whole parse.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from enum import StrEnum
 from functools import lru_cache
@@ -22,6 +21,7 @@ from functools import lru_cache
 from openai.types.chat import ChatCompletionMessageParam
 
 from hedonism_assistant.config import Settings, get_settings
+from hedonism_assistant.llm.json_output import loads_json
 from hedonism_assistant.llm.openrouter import OpenRouterClient, get_openrouter_client
 from hedonism_assistant.logging_config import get_logger
 from hedonism_assistant.models.query import (
@@ -124,7 +124,7 @@ class QueryParser:
             return self._pure_semantic(message, confident=True)
 
         try:
-            raw = json.loads(await self._complete(message))
+            raw = loads_json(await self._complete(message))
         except Exception as exc:  # noqa: BLE001 - resilience boundary: parsing must never fail a request
             logger.warning("query_parse_failed", error=str(exc))
             return self._pure_semantic(message, confident=False)
