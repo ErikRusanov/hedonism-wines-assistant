@@ -84,6 +84,14 @@ class Settings(BaseSettings):
     request_timeout_seconds: float = 60.0
     max_retries: int = 3
 
+    # Access control. A single shared password gates both the chat UI and the
+    # API. Leave empty to disable auth entirely (the default — convenient for
+    # local dev and tests). When set, the browser logs in once (cookie session)
+    # and programmatic callers pass it as ``Authorization: Bearer <password>``
+    # or an ``X-Auth-Password`` header. ``/health`` stays public for liveness.
+    auth_password: str = ""
+    auth_cookie_name: str = "hw_auth"
+
     # Serving (I-7). CORS origins for the chat page / API. Permissive by default
     # for the demo; tighten to specific origins in production (I-9). Accepts a
     # comma-separated string in the environment (see the CSV validator below).

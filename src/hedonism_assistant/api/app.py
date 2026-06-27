@@ -17,7 +17,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from hedonism_assistant import __version__
-from hedonism_assistant.api import chat, health, search
+from hedonism_assistant.api import auth, chat, health, search
+from hedonism_assistant.api.auth import AuthMiddleware
 from hedonism_assistant.api.errors import register_error_handlers
 from hedonism_assistant.api.taxonomy import load_taxonomy
 from hedonism_assistant.config import Settings, get_settings
@@ -54,6 +55,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
 
+    # Middleware runs outermost-last, so add auth first and CORS second: CORS
+    # then wraps even the 401s, and OPTIONS preflights (which auth lets through)
+    # are answered by CORS.
+    app.add_middleware(
+        AuthMiddleware,
+        password=settings.auth_password,
+        cookie_name=settings.auth_cookie_name,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allow_origins,
@@ -64,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
 
     app.include_router(health.router)
+    app.include_router(auth.router)
     app.include_router(chat.router)
     app.include_router(search.router)
 
