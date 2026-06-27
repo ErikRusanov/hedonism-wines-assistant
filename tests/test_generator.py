@@ -47,6 +47,8 @@ async def test_streams_deltas_verbatim() -> None:
 
     assert out == ["A ", "grounded ", "answer."]
     assert capture["kwargs"]["model"] == "anthropic/claude-opus-4-8"
+    # Output is capped so OpenRouter does not reserve the model's full budget.
+    assert capture["kwargs"]["max_tokens"] == 2048
 
 
 async def test_prompt_has_grounding_and_injection_boundary() -> None:

@@ -105,6 +105,7 @@ class AnswerGenerator:
             model=settings.generation_model,
             fallback_models=settings.generation_fallback_models,
             temperature=settings.generation_temperature,
+            max_tokens=settings.generation_max_tokens,
         ):
             yield delta
 

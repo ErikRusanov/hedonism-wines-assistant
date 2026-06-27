@@ -115,11 +115,21 @@ class Settings(BaseSettings):
     rerank_temperature: float = 0.0  # deterministic listwise ordering
     mmr_enabled: bool = False  # diversify the final list (needs candidate vectors)
     mmr_lambda: float = 0.5  # MMR relevance/diversity trade-off in [0, 1]
+    # When hard filters yield zero hits, retry once with the filters dropped
+    # (semantic-only). A hallucinated category or a filter on an unpopulated
+    # payload field (e.g. sub_region) then degrades to ranking instead of an
+    # empty answer. The relaxed pass still reranks, so precision holds up.
+    retrieve_relax_filters_on_empty: bool = True
 
     # Answer generation (I-6). The retrieved cards are folded into a grounded
     # prompt and the generation model streams the answer; citations are derived
     # from inline [n] markers, so these toggles only shape the prompt and prose.
     generation_temperature: float = 0.3  # a little warmth for natural prose, still grounded
+    # Cap output tokens. Without this OpenRouter reserves the model's full max
+    # completion budget (tens of thousands) against the key's balance, which both
+    # trips spurious 402s on a modest balance and risks runaway-length answers; a
+    # cited wine answer needs far less.
+    generation_max_tokens: int = 2048
     generation_context_max_wines: int = 8  # cards folded into the prompt context
     generation_note_chars: int = 400  # per-card tasting-note cap (token budget + injection surface)
     generation_max_suggestions: int = 3  # follow-ups offered on out-of-scope / empty retrieval

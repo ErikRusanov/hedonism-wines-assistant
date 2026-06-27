@@ -24,7 +24,7 @@ from pydantic import ValidationError
 from hedonism_assistant.config import RerankerKind, Settings, get_settings
 from hedonism_assistant.embeddings import EmbedQueryFn, get_query_embedder
 from hedonism_assistant.logging_config import get_logger
-from hedonism_assistant.models.query import ParsedQuery
+from hedonism_assistant.models.query import ParsedQuery, WineFilters
 from hedonism_assistant.models.wine import RetrievedWine, Wine
 from hedonism_assistant.retrieval.mmr import ScoredCandidate, Vector, mmr_select
 from hedonism_assistant.retrieval.rerank import Reranker, get_reranker
@@ -33,6 +33,20 @@ from hedonism_assistant.vector_store.filters import build_qdrant_filter
 from hedonism_assistant.vector_store.sparse import SparseEncoder
 
 logger = get_logger(__name__)
+
+
+def _numeric_only(filters: WineFilters) -> WineFilters:
+    """Keep only the numeric budget/quality constraints, drop categoricals.
+
+    Used by the filter-relaxation fallback: a price/vintage/critic-score bound is
+    a literal limit the user means, so it survives relaxation; categorical filters
+    (region, grape, a hallucinated category, …) are the ones dropped to recover.
+    """
+    return WineFilters(
+        price_range=filters.price_range,
+        vintage_range=filters.vintage_range,
+        min_critic_score=filters.min_critic_score,
+    )
 
 
 class Retriever:
@@ -99,14 +113,31 @@ class Retriever:
         want_vectors: bool | list[str] = (
             [self._settings.qdrant_dense_vector_name] if self._settings.mmr_enabled else False
         )
-        points = await self._store.hybrid_query(
-            dense_vector=dense_vector,
-            sparse_indices=sparse_indices,
-            sparse_values=sparse_values,
-            query_filter=query_filter,
-            limit=self._settings.retrieve_top_n,
-            with_vectors=want_vectors,
-        )
+
+        async def hybrid_query(query_filter: object | None) -> list:
+            return await self._store.hybrid_query(
+                dense_vector=dense_vector,
+                sparse_indices=sparse_indices,
+                sparse_values=sparse_values,
+                query_filter=query_filter,
+                limit=self._settings.retrieve_top_n,
+                with_vectors=want_vectors,
+            )
+
+        points = await hybrid_query(query_filter)
+        # A categorical hard filter that excludes everything (a hallucinated value,
+        # or a filter on an unpopulated payload field) blanks out a query the
+        # catalogue can actually answer. Retry once with only the numeric budget
+        # constraints kept, so ranking can recover while "under £50"/"95+ points"
+        # stay honoured (relaxing those would recommend out-of-budget bottles, and
+        # an impossible budget like "under £5" should still fall through to empty).
+        # Only worth a retry when dropping categoricals actually loosens the filter.
+        relax = self._settings.retrieve_relax_filters_on_empty
+        if not points and query_filter is not None and relax:
+            relaxed_filter = build_qdrant_filter(_numeric_only(query.filters))
+            if relaxed_filter != query_filter:
+                logger.info("retrieval_filters_relaxed", semantic_query=query.semantic_query)
+                points = await hybrid_query(relaxed_filter)
 
         candidates: list[RetrievedWine] = []
         vectors_by_id: dict[str, Vector] = {}

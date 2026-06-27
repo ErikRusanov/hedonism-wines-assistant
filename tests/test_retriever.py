@@ -100,6 +100,105 @@ async def test_filter_is_forwarded_to_store() -> None:
     assert keys == {"color", "region", "price"}
 
 
+class _FilterAwareStore:
+    """Returns canned points only when called *without* a filter (relaxed pass)."""
+
+    def __init__(self, unfiltered_points: list[object]) -> None:
+        self._unfiltered = unfiltered_points
+        self.calls: list[dict] = []
+
+    async def hybrid_query(self, **kwargs) -> list[object]:
+        self.calls.append(kwargs)
+        return [] if kwargs.get("query_filter") is not None else self._unfiltered
+
+
+def _filtered_query() -> ParsedQuery:
+    return ParsedQuery(
+        semantic_query="sweet dessert wine",
+        filters=WineFilters(category=["sweet"]),  # a value no card carries
+    )
+
+
+async def test_empty_filtered_result_relaxes_to_filter_free_retry() -> None:
+    wines = sample_wines()
+    points = [_scored_point(w, score=1.0 - i * 0.1) for i, w in enumerate(wines)]
+    store = _FilterAwareStore(points)
+    retriever = Retriever(
+        store, _capture_embed, NoOpReranker(), _settings(), sparse_encoder=SparseEncoder()
+    )
+
+    results = await retriever.retrieve(_filtered_query())
+
+    assert [r.wine.id for r in results] == [w.id for w in wines]
+    assert len(store.calls) == 2
+    assert store.calls[0]["query_filter"] is not None
+    assert store.calls[1]["query_filter"] is None
+
+
+async def test_relaxation_disabled_keeps_empty_result() -> None:
+    store = _FilterAwareStore([_scored_point(w, 1.0) for w in sample_wines()])
+    retriever = Retriever(
+        store,
+        _capture_embed,
+        NoOpReranker(),
+        _settings(retrieve_relax_filters_on_empty=False),
+        sparse_encoder=SparseEncoder(),
+    )
+
+    results = await retriever.retrieve(_filtered_query())
+
+    assert results == []
+    assert len(store.calls) == 1
+
+
+async def test_no_relaxation_when_unfiltered_query_already_empty() -> None:
+    store = _FilterAwareStore([])  # filter-free pass also empty
+    retriever = Retriever(
+        store, _capture_embed, NoOpReranker(), _settings(), sparse_encoder=SparseEncoder()
+    )
+
+    # No filter at all -> the relaxation guard (query_filter is not None) never trips.
+    results = await retriever.retrieve(ParsedQuery(semantic_query="anything"))
+
+    assert results == []
+    assert len(store.calls) == 1
+
+
+async def test_relaxation_keeps_numeric_budget_constraint() -> None:
+    store = _FilterAwareStore([])
+    retriever = Retriever(
+        store, _capture_embed, NoOpReranker(), _settings(), sparse_encoder=SparseEncoder()
+    )
+    query = ParsedQuery(
+        semantic_query="cheap Pauillac",
+        filters=WineFilters(region=["Pauillac"], price_range=PriceRange(max=50)),
+    )
+
+    await retriever.retrieve(query)
+
+    # Retried, but the price ceiling survives — only the categorical region is dropped.
+    assert len(store.calls) == 2
+    assert {c.key for c in store.calls[1]["query_filter"].must} == {"price"}
+
+
+async def test_no_relaxation_when_only_numeric_filter_present() -> None:
+    # "under £5" with nothing matching must stay empty, not relax into over-budget
+    # recommendations — the relaxed filter would equal the original, so no retry.
+    store = _FilterAwareStore([_scored_point(w, 1.0) for w in sample_wines()])
+    retriever = Retriever(
+        store, _capture_embed, NoOpReranker(), _settings(), sparse_encoder=SparseEncoder()
+    )
+    query = ParsedQuery(
+        semantic_query="first growth Bordeaux",
+        filters=WineFilters(price_range=PriceRange(max=5)),
+    )
+
+    results = await retriever.retrieve(query)
+
+    assert results == []
+    assert len(store.calls) == 1
+
+
 async def test_bad_payload_is_skipped_not_raised() -> None:
     wines = sample_wines()
     good = _scored_point(wines[0], score=0.9)

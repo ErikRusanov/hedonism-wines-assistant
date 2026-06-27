@@ -32,7 +32,9 @@ from hedonism_assistant.vector_store.payload import normalize_critic_score
 
 logger = get_logger(__name__)
 
-# Keep judge context compact: enough of the (copyrighted) note to verify claims.
+# Floor for how much of the (copyrighted) note the judge sees; the effective cap
+# is raised to ``generation_note_chars`` so the judge can see whatever the answer
+# could have cited (see ``_render``).
 _NOTE_SNIPPET_CHARS: Final = 200
 
 _FAITHFULNESS_PROMPT: Final = """\
@@ -111,12 +113,10 @@ class LLMJudge:
             logger.warning("judge_failed", error=str(exc))
             return None
 
-    @classmethod
-    def _render_cards(cls, retrieved: list[RetrievedWine]) -> str:
-        return "\n".join(cls._render(i, c) for i, c in enumerate(retrieved, start=1))
+    def _render_cards(self, retrieved: list[RetrievedWine]) -> str:
+        return "\n".join(self._render(i, c) for i, c in enumerate(retrieved, start=1))
 
-    @staticmethod
-    def _render(index: int, candidate: RetrievedWine) -> str:
+    def _render(self, index: int, candidate: RetrievedWine) -> str:
         """One compact card line for the judge, mirroring the reranker's format."""
         wine = candidate.wine
         location = "/".join(p for p in (wine.region, wine.sub_region) if p) or "—"
@@ -126,8 +126,12 @@ class LLMJudge:
         )
         score_text = f", {score:.0f}/100" if score is not None else ""
         note = (wine.tasting_notes or "").strip().replace("\n", " ")
-        if len(note) > _NOTE_SNIPPET_CHARS:
-            note = note[:_NOTE_SNIPPET_CHARS].rstrip() + "…"
+        # Show the judge at least as much of the note as the generator could cite,
+        # otherwise a claim grounded beyond the snippet reads as unsupported and
+        # deflates faithfulness for no real fault.
+        note_cap = max(_NOTE_SNIPPET_CHARS, self._settings.generation_note_chars)
+        if len(note) > note_cap:
+            note = note[:note_cap].rstrip() + "…"
         note_text = f" {note}" if note else ""
         return (
             f"[{index}] {wine.name} — {location}, {grapes}, "
