@@ -263,6 +263,8 @@ class ProductParser:
                         raw.region = link_texts[0]
                         if len(link_texts) >= 2:
                             raw.country = link_texts[-1]
+                case "sub-group":
+                    raw.sub_region = link_texts[0] if link_texts else (text or None)
                 case "grape":
                     raw.grapes = link_texts or ([text] if text else [])
                 case _:

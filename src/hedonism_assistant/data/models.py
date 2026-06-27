@@ -36,6 +36,9 @@ class RawWine(BaseModel):
     color: WineColor | None = None
     producer: str | None = None
     region: str | None = None
+    sub_region: str | None = Field(
+        default=None, description="Appellation / sub-group as shown, e.g. 'Pauillac', 'Pomerol'."
+    )
     country: str | None = None
     region_raw: str | None = Field(
         default=None, description="Full region/country label as shown, e.g. 'Tuscany, Italy'."

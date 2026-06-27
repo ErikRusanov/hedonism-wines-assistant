@@ -312,6 +312,7 @@ def normalize_wine(raw: RawWine) -> Wine | None:
         producer=_clean(raw.producer),
         country=canonicalize_country(raw.country),
         region=_clean(raw.region),
+        sub_region=_clean(raw.sub_region),
         vintage=raw.vintage,
         grapes=canonicalize_grapes(raw.grapes),
         abv=raw.abv,
@@ -383,7 +384,7 @@ def build_embedding_text(wine: Wine, *, notes_chars: int = 600) -> str:
         if part
     )
     identity = f"{wine.name} is a {descriptor} wine"
-    origin = ", ".join(p for p in (wine.region, wine.country) if p)
+    origin = ", ".join(p for p in (wine.sub_region, wine.region, wine.country) if p)
     if origin:
         identity += f" from {origin}"
     if wine.producer:

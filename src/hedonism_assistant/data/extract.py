@@ -45,6 +45,7 @@ class ExtractReport:
         "producer",
         "country",
         "region",
+        "sub_region",
         "vintage",
         "color",
         "grapes",

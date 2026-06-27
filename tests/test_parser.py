@@ -48,6 +48,7 @@ def test_attributes_are_scoped_to_the_product(wine: RawWine) -> None:
     assert wine.producer == "Imaginaire Estate"
     assert wine.grapes == ["Cabernet Sauvignon"]
     assert wine.region == "Bordeaux"
+    assert wine.sub_region == "Pauillac"
     assert wine.country == "France"
 
 
