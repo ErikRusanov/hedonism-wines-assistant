@@ -34,7 +34,7 @@ async def chat(
     request: ChatRequest,
     service: ChatService = Depends(get_chat_service),
 ) -> StreamingResponse:
-    events = service.answer_stream(request.message).__aiter__()
+    events = service.answer_stream(request.message, request.history).__aiter__()
     # Surface a pre-stream error here (caught by the 503 handler); StopAsyncIteration
     # would only happen if the service yielded nothing, which it never does.
     first = await events.__anext__()

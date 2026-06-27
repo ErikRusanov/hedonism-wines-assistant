@@ -24,6 +24,7 @@ from hedonism_assistant.config import Settings, get_settings
 from hedonism_assistant.llm.json_output import loads_json
 from hedonism_assistant.llm.openrouter import OpenRouterClient, get_openrouter_client
 from hedonism_assistant.logging_config import get_logger
+from hedonism_assistant.models.chat import ChatTurn
 from hedonism_assistant.models.query import (
     ParsedQuery,
     PriceRange,
@@ -105,6 +106,11 @@ Rules:
 - Use "out_of_scope" only for requests unrelated to wine or drinks (weather, coding,
   store logistics like delivery, returns or opening hours). Leave filters empty and
   restate the message in semantic_query.
+- If a "Conversation so far" block precedes the current message, use it ONLY to
+  resolve references in the current message: "something cheaper" lowers the price
+  relative to the last suggestion; "what about a white?" keeps the prior subject
+  but swaps colour; "to go with that" reuses the dish. Always parse for the user's
+  CURRENT ask — do not re-extract constraints they have moved on from.
 
 Examples:
 User: "red Bordeaux under £50"
@@ -133,6 +139,16 @@ User: "what's the weather like today?"
 """
 
 
+def _user_content(message: str, history: list[ChatTurn]) -> str:
+    """Frame the current message, prefixed with a compact conversation context."""
+    if not history:
+        return message
+    context = "\n".join(
+        f"{'User' if turn.role == 'user' else 'Assistant'}: {turn.content}" for turn in history
+    )
+    return f"Conversation so far:\n{context}\n\nCurrent message: {message}"
+
+
 class QueryParser:
     """Parse a user message into a :class:`ParsedQuery` via the utility model."""
 
@@ -157,13 +173,18 @@ class QueryParser:
         """
         self._taxonomy = taxonomy
 
-    async def parse(self, message: str) -> ParsedQuery:
-        """Parse ``message``; never raises, always returns a usable query."""
+    async def parse(self, message: str, history: list[ChatTurn] | None = None) -> ParsedQuery:
+        """Parse ``message``; never raises, always returns a usable query.
+
+        ``history`` (recent prior turns) only helps resolve references in
+        ``message`` ("something cheaper", "to that"); the parsed filters still
+        describe the current ask.
+        """
         if not self._settings.query_parsing_enabled:
             return self._pure_semantic(message, confident=True)
 
         try:
-            raw = loads_json(await self._complete(message))
+            raw = loads_json(await self._complete(message, history or []))
         except Exception as exc:  # noqa: BLE001 - resilience boundary: parsing must never fail a request
             logger.warning("query_parse_failed", error=str(exc))
             return self._pure_semantic(message, confident=False)
@@ -174,11 +195,11 @@ class QueryParser:
 
         return self._coerce(raw, message)
 
-    async def _complete(self, message: str) -> str:
+    async def _complete(self, message: str, history: list[ChatTurn]) -> str:
         """Call the utility model and return its raw (expected-JSON) content."""
         messages: list[ChatCompletionMessageParam] = [
             {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": message},
+            {"role": "user", "content": _user_content(message, history)},
         ]
         return await self._client.chat(
             messages,

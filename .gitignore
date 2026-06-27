@@ -35,6 +35,12 @@ htmlcov/
 # version-controlled. Re-included after the /data/ and *.jsonl ignores above.
 !/data/golden_set.jsonl
 
+# Bottle photos: imported by hand from the owner's browser (Cloudflare blocks
+# server-side fetch) and served first-party from /bottles/<SKU>.jpg. Kept out of
+# git as a local/deploy asset — ~260KB each, ~100MB at full catalogue coverage.
+# Re-populate with: python data/import_images.py
+src/hedonism_assistant/api/static/bottles/
+
 # Qdrant local storage
 qdrant_storage/
 

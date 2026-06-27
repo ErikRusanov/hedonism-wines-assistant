@@ -115,16 +115,71 @@
     }
     @keyframes shimmer { to { background-position: -200% 0; } }
 
-    /* --- Citations --- */
-    .citations { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
-    .citation {
-      font-size: 14px; padding: 8px 10px;
-      border: 1px solid var(--line); border-radius: 8px;
-      background: #0000001a;
+    /* --- Understanding pills (read-only, shown while preparing) --- */
+    .understood {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+      margin-bottom: 12px;
     }
-    .citation a { color: var(--accent); text-decoration: none; font-weight: 600; }
-    .citation a:hover { text-decoration: underline; }
-    .citation .price { color: var(--muted); }
+    .understood-label {
+      font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+      color: var(--muted); margin-right: 2px;
+    }
+    .understood-pill {
+      font-size: 12.5px; padding: 3px 10px; border-radius: 999px;
+      background: var(--accent); color: var(--bg); font-weight: 600;
+      white-space: nowrap;
+    }
+
+    /* --- Wine cards (the cited bottles, rendered as a shelf) --- */
+    .wine-cards { margin-top: 14px; display: flex; flex-direction: column; gap: 10px; }
+    .wine-card {
+      display: flex; gap: 14px; padding: 12px;
+      border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+      transition: box-shadow 0.2s, border-color 0.2s;
+    }
+    .wine-card:hover { border-color: var(--accent); box-shadow: 0 2px 14px #8a5a2b1f; }
+
+    .wine-card .photo {
+      flex: 0 0 64px; width: 64px; height: 96px; border-radius: 8px;
+      background: #fff; border: 1px solid var(--line);
+      display: flex; align-items: center; justify-content: center; overflow: hidden;
+    }
+    .wine-card .photo img { width: 100%; height: 100%; object-fit: contain; }
+    .wine-card .photo.noimg {
+      background: linear-gradient(160deg, #f0e7d6, #e3d4ba);
+      color: var(--accent); font-size: 30px; font-weight: 700;
+      font-family: Georgia, "Times New Roman", serif;
+    }
+
+    .wine-card .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .wine-card .producer {
+      font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted);
+    }
+    .wine-card .name {
+      font-size: 15px; font-weight: 600; color: var(--ink); text-decoration: none; line-height: 1.3;
+    }
+    .wine-card .name:hover { color: var(--accent); }
+    .wine-card .sub { font-size: 13px; color: var(--muted); }
+    .wine-card .badge {
+      align-self: flex-start; margin-top: 4px;
+      font-size: 11.5px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+      background: #8a5a2b1a; color: var(--accent); border: 1px solid var(--line);
+    }
+    .wine-card .price-row {
+      margin-top: auto; padding-top: 8px; display: flex; align-items: baseline;
+      flex-wrap: wrap; gap: 8px;
+    }
+    .wine-card .price { font-size: 15px; font-weight: 700; color: var(--ink); }
+    .wine-card .was { font-size: 13px; color: var(--muted); text-decoration: line-through; }
+    .wine-card .sale {
+      font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 5px;
+      background: #b3402e; color: #fff; text-transform: uppercase; letter-spacing: 0.03em;
+    }
+    .wine-card .cta {
+      margin-left: auto; font-size: 13px; font-weight: 600;
+      color: var(--accent); text-decoration: none; white-space: nowrap;
+    }
+    .wine-card .cta:hover { text-decoration: underline; }
 
     /* --- Suggestion chips --- */
     .suggestions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
@@ -217,6 +272,11 @@
     const input = document.getElementById("input");
     const send = document.getElementById("send");
 
+    // Client-held conversation context (the service is stateless). We replay the
+    // last few turns so follow-ups like "something cheaper" resolve.
+    const turns = [];
+    const HISTORY_LIMIT = 6;
+
     // Quick-start prompts and rotating placeholder examples.
     const STARTERS = [
       "Red Bordeaux under £50",
@@ -251,10 +311,17 @@
       return null;
     }
 
+    // Drop the "[n]" reference markers from the displayed answer; the numbered
+    // cards below are the reference, so the prose reads as clean sommelier text.
+    function stripCitations(text) {
+      return text.replace(/\s?\[\d+\]/g, "");
+    }
+
     function writeProse(el, text) {
-      const html = renderMarkdown(text);
+      const clean = stripCitations(text);
+      const html = renderMarkdown(clean);
       if (html != null) el.innerHTML = html;
-      else el.textContent = text;
+      else el.textContent = clean;
     }
 
     function add(cls, text) {
@@ -266,29 +333,123 @@
       return el;
     }
 
-    function renderCitations(bubble, citations) {
+    const CURRENCY = { GBP: "£", EUR: "€", USD: "$" };
+    function fmtPrice(currency, value) {
+      const sym = CURRENCY[currency] || ((currency || "") + " ");
+      return sym + Number(value).toLocaleString("en-GB");
+    }
+    function monogram(c) {
+      const s = (c.producer || c.name || "?").trim();
+      return s ? s[0].toUpperCase() : "?";
+    }
+
+    // Read-only "Understood: …" chips, prepended so they sit above the prose.
+    function renderUnderstanding(bubble, chips) {
+      if (!chips || !chips.length) return;
+      const box = document.createElement("div");
+      box.className = "understood";
+      const label = document.createElement("span");
+      label.className = "understood-label";
+      label.textContent = "Understood";
+      box.appendChild(label);
+      for (const c of chips) {
+        const pill = document.createElement("span");
+        pill.className = "understood-pill";
+        pill.textContent = c;
+        box.appendChild(pill);
+      }
+      bubble.insertBefore(box, bubble.firstChild);
+    }
+
+    function makeCard(c, n) {
+      const card = document.createElement("div");
+      card.className = "wine-card";
+
+      const photo = document.createElement("div");
+      photo.className = "photo";
+      const showMonogram = () => { photo.classList.add("noimg"); photo.textContent = monogram(c); };
+      if (c.image_path) {
+        const img = document.createElement("img");
+        img.src = c.image_path;
+        img.alt = c.name;
+        img.loading = "lazy";
+        img.onerror = () => { img.remove(); showMonogram(); };
+        photo.appendChild(img);
+      } else {
+        showMonogram();
+      }
+
+      const body = document.createElement("div");
+      body.className = "body";
+
+      if (c.producer) {
+        const p = document.createElement("div");
+        p.className = "producer";
+        p.textContent = c.producer;
+        body.appendChild(p);
+      }
+
+      const name = document.createElement("a");
+      name.className = "name";
+      name.href = c.url; name.target = "_blank"; name.rel = "noopener";
+      name.textContent = n + ". " + c.name;
+      body.appendChild(name);
+
+      const sub = [c.vintage, c.region].filter(Boolean).join(" · ");
+      if (sub) {
+        const s = document.createElement("div");
+        s.className = "sub";
+        s.textContent = sub;
+        body.appendChild(s);
+      }
+
+      if (c.top_critic_score != null) {
+        const badge = document.createElement("span");
+        badge.className = "badge";
+        badge.textContent = (c.top_critic ? c.top_critic + " " : "") + Math.round(c.top_critic_score);
+        body.appendChild(badge);
+      }
+
+      const priceRow = document.createElement("div");
+      priceRow.className = "price-row";
+      if (c.price != null) {
+        if (c.on_sale && c.sale_was_price != null) {
+          const was = document.createElement("span");
+          was.className = "was";
+          was.textContent = fmtPrice(c.currency, c.sale_was_price);
+          priceRow.appendChild(was);
+        }
+        const price = document.createElement("span");
+        price.className = "price";
+        price.textContent = fmtPrice(c.currency, c.price);
+        priceRow.appendChild(price);
+        if (c.on_sale) {
+          const tag = document.createElement("span");
+          tag.className = "sale";
+          tag.textContent = "Sale";
+          priceRow.appendChild(tag);
+        }
+      }
+      const cta = document.createElement("a");
+      cta.className = "cta";
+      cta.href = c.url; cta.target = "_blank"; cta.rel = "noopener";
+      cta.textContent = "View at Hedonism →";
+      priceRow.appendChild(cta);
+      body.appendChild(priceRow);
+
+      card.appendChild(photo);
+      card.appendChild(body);
+      return card;
+    }
+
+    function renderCards(bubble, citations) {
       if (!citations || !citations.length) return;
       const box = document.createElement("div");
-      box.className = "citations";
-      for (const c of citations) {
-        const row = document.createElement("div");
-        row.className = "citation";
-        const a = document.createElement("a");
-        a.href = c.url;
-        a.target = "_blank";
-        a.rel = "noopener";
-        a.textContent = c.name;
-        row.appendChild(a);
-        if (c.price != null) {
-          const span = document.createElement("span");
-          span.className = "price";
-          span.textContent = "  —  " + (c.currency || "GBP") + " " + c.price;
-          row.appendChild(span);
-        }
-        box.appendChild(row);
-      }
+      box.className = "wine-cards";
+      citations.forEach((c, i) => box.appendChild(makeCard(c, i + 1)));
       bubble.appendChild(box);
     }
+
 
     function renderSuggestions(target, suggestions) {
       if (!suggestions || !suggestions.length) return;
@@ -310,13 +471,17 @@
     }
 
     function handleEvent(data, state) {
-      if (typeof data.delta === "string") {
+      if (data.event === "understanding") {
+        // Shown above the prose while the answer is still being prepared.
+        renderUnderstanding(state.bubble, data.chips);
+      } else if (data.event === "chunk") {
         if (state.status) { state.status.remove(); state.status = null; }
         state.answer += data.delta;
         writeProse(state.prose, state.answer);
-      } else {
-        // AnswerCompletion: citations + suggestions known only at the end.
-        renderCitations(state.bubble, data.citations);
+      } else if (data.event === "completion") {
+        // Citations + suggestions known only once generation ends.
+        state.citations = data.citations || [];
+        renderCards(state.bubble, state.citations);
         renderSuggestions(state.bubble, data.suggestions);
       }
       log.scrollTop = log.scrollHeight;
@@ -361,7 +526,7 @@
         const resp = await fetch("/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({ message, history: turns.slice(-HISTORY_LIMIT) }),
         });
         if (!resp.ok) {
           const err = await resp.json().catch(() => ({}));
@@ -389,6 +554,11 @@
             handleEvent(JSON.parse(payload), state);
           }
         }
+        // Stream finished cleanly: remember this turn for follow-up context.
+        if (state.answer) {
+          turns.push({ role: "user", content: message });
+          turns.push({ role: "assistant", content: state.answer });
+        }
       } catch (e) {
         if (state.status) state.status.remove();
         prose.className = "error";
@@ -411,8 +581,9 @@
     }
     showWelcome();
 
-    // The service is stateless, so clearing is purely a UI reset.
+    // The service is stateless; clearing resets the UI and the client-held context.
     document.getElementById("clear").addEventListener("click", () => {
+      turns.length = 0;
       showWelcome();
       input.value = "";
       input.focus();

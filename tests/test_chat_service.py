@@ -13,17 +13,24 @@ from hedonism_assistant.generation.fallbacks import (
     OUT_OF_SCOPE_MESSAGE,
 )
 from hedonism_assistant.generation.service import ChatService
-from hedonism_assistant.models.chat import AnswerChunk, AnswerCompletion
+from hedonism_assistant.models.chat import (
+    AnswerChunk,
+    AnswerCompletion,
+    ChatTurn,
+    QueryUnderstanding,
+)
 from hedonism_assistant.models.query import ParsedQuery, PriceRange, QueryIntent, WineFilters
-from hedonism_assistant.models.wine import RetrievedWine
+from hedonism_assistant.models.wine import RetrievedWine, WineColor
 from tests.fixtures.wines import sample_wines
 
 
 class _FakeParser:
     def __init__(self, parsed: ParsedQuery) -> None:
         self._parsed = parsed
+        self.history = None
 
-    async def parse(self, message: str) -> ParsedQuery:
+    async def parse(self, message: str, history=None) -> ParsedQuery:
+        self.history = history
         return self._parsed
 
 
@@ -41,9 +48,11 @@ class _FakeGenerator:
     def __init__(self, deltas: list[str]) -> None:
         self._deltas = deltas
         self.calls = 0
+        self.history = None
 
-    async def stream(self, query: ParsedQuery, retrieved: list[RetrievedWine]):
+    async def stream(self, query: ParsedQuery, retrieved: list[RetrievedWine], history=None):
         self.calls += 1
+        self.history = history
         for delta in self._deltas:
             yield delta
 
@@ -148,14 +157,58 @@ async def test_confident_happy_path_has_no_extra_suggestions() -> None:
     assert response.suggestions == []
 
 
-async def test_stream_emits_chunks_then_one_completion() -> None:
+async def test_stream_emits_understanding_then_chunks_then_one_completion() -> None:
     parsed = ParsedQuery(semantic_query="q", intent=QueryIntent.RECOMMENDATION)
     generator = _FakeGenerator(["a ", "b ", "c [1]"])
     service = _service(_FakeParser(parsed), _FakeRetriever(_retrieved()), generator)
 
     events = [event async for event in service.answer_stream("q")]
 
-    assert all(isinstance(e, AnswerChunk) for e in events[:-1])
+    # First event is the query-understanding summary, then prose chunks, then one completion.
+    assert isinstance(events[0], QueryUnderstanding)
+    assert all(isinstance(e, AnswerChunk) for e in events[1:-1])
     assert isinstance(events[-1], AnswerCompletion)
-    assert "".join(e.delta for e in events[:-1]) == "a b c [1]"
+    assert "".join(e.delta for e in events[1:-1]) == "a b c [1]"
     assert events[-1].citations[0].wine_id == sample_wines()[0].id
+
+
+async def test_understanding_chips_reflect_filters() -> None:
+    parsed = ParsedQuery(
+        semantic_query="red Bordeaux",
+        intent=QueryIntent.RECOMMENDATION,
+        filters=WineFilters(
+            color=[WineColor.RED], region=["Bordeaux"], price_range=PriceRange(max=50)
+        ),
+    )
+    service = _service(_FakeParser(parsed), _FakeRetriever(_retrieved()), _FakeGenerator(["x [1]"]))
+
+    events = [event async for event in service.answer_stream("red Bordeaux under £50")]
+
+    understanding = events[0]
+    assert isinstance(understanding, QueryUnderstanding)
+    assert understanding.chips == ["Red", "Bordeaux", "under £50"]
+
+
+async def test_history_threaded_to_parser_and_generator() -> None:
+    parsed = ParsedQuery(semantic_query="cheaper", intent=QueryIntent.RECOMMENDATION)
+    parser = _FakeParser(parsed)
+    generator = _FakeGenerator(["The Chablis [2]."])
+    service = _service(parser, _FakeRetriever(_retrieved()), generator)
+    history = [
+        ChatTurn(role="user", content="a red Bordeaux"),
+        ChatTurn(role="assistant", content="The Pichon [1]."),
+    ]
+
+    await service.answer("something cheaper", history)
+
+    assert parser.history == history
+    assert generator.history == history
+
+
+async def test_emits_understanding_even_when_out_of_scope() -> None:
+    parsed = ParsedQuery(semantic_query="weather", intent=QueryIntent.OUT_OF_SCOPE)
+    service = _service(_FakeParser(parsed), _FakeRetriever([]), _FakeGenerator(["x"]))
+
+    events = [event async for event in service.answer_stream("what's the weather?")]
+
+    assert isinstance(events[0], QueryUnderstanding)

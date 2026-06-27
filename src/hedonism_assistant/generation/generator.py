@@ -28,6 +28,7 @@ from openai.types.chat import ChatCompletionMessageParam
 from hedonism_assistant.config import Settings, get_settings
 from hedonism_assistant.llm.openrouter import OpenRouterClient, get_openrouter_client
 from hedonism_assistant.logging_config import get_logger
+from hedonism_assistant.models.chat import ChatTurn
 from hedonism_assistant.models.query import ParsedQuery
 from hedonism_assistant.models.wine import RetrievedWine
 from hedonism_assistant.vector_store.payload import normalize_critic_score
@@ -68,6 +69,12 @@ Citation rules:
   list, e.g. "the Pichon Lalande [1] is a classic Pauillac". Cite each wine you
   recommend or discuss. Use only the numbers shown.
 
+Conversation context:
+- Earlier turns may precede the current question for continuity (so "something
+  cheaper" or "what about a white?" make sense). Use them only to understand what
+  the user means now. The ONLY source of bottles is the current <wines> list — never
+  recommend a wine from an earlier turn unless it also appears in the current list.
+
 Style:
 - Be concise, knowledgeable and helpful, like a good sommelier. Recommend a few
   wines rather than listing everything, and explain briefly why they fit. Mention
@@ -84,22 +91,29 @@ class AnswerGenerator:
         self._settings = settings
 
     async def stream(
-        self, query: ParsedQuery, retrieved: list[RetrievedWine]
+        self,
+        query: ParsedQuery,
+        retrieved: list[RetrievedWine],
+        history: list[ChatTurn] | None = None,
     ) -> AsyncIterator[str]:
         """Yield answer prose deltas grounded in ``retrieved``.
 
         Only the first ``generation_context_max_wines`` cards reach the prompt; the
-        retriever has already ranked them, so this is a context-budget cap.
+        retriever has already ranked them, so this is a context-budget cap. ``history``
+        (prior turns) is replayed before the grounded turn for conversational
+        continuity, but the current cards remain the only grounding source.
         """
         settings = self._settings
         cards = retrieved[: settings.generation_context_max_wines]
-        messages: list[ChatCompletionMessageParam] = [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+        messages: list[ChatCompletionMessageParam] = [{"role": "system", "content": _SYSTEM_PROMPT}]
+        for turn in history or []:
+            messages.append({"role": turn.role, "content": turn.content})
+        messages.append(
             {
                 "role": "user",
                 "content": self._build_user_message(query, cards, settings.generation_note_chars),
-            },
-        ]
+            }
+        )
         async for delta in self._client.chat_stream(
             messages,
             model=settings.generation_model,
@@ -129,8 +143,14 @@ class AnswerGenerator:
         wine = candidate.wine
         location = "/".join(p for p in (wine.country, wine.region, wine.sub_region) if p)
         descriptor = ", ".join(p for p in (wine.color, wine.category) if p)
+        # Skip scores that normalise outside (0, 100]: those are extraction errors
+        # (a 100-point value mislabelled as a 20-point scale) and would mislead.
         score = max(
-            (normalize_critic_score(s.score, s.scale) for s in wine.critic_scores),
+            (
+                n
+                for s in wine.critic_scores
+                if 0 < (n := normalize_critic_score(s.score, s.scale)) <= 100
+            ),
             default=None,
         )
         score_text = f", best critic score {score:.0f}/100" if score is not None else ""

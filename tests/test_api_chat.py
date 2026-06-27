@@ -24,7 +24,7 @@ class _FakeService:
     def __init__(self, events) -> None:
         self._events = events
 
-    async def answer_stream(self, message: str):
+    async def answer_stream(self, message: str, history=None):
         for event in self._events:
             if isinstance(event, Exception):
                 raise event

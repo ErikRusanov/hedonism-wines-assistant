@@ -8,6 +8,7 @@ import json
 
 from hedonism_assistant.config import Settings
 from hedonism_assistant.llm.openrouter import OpenRouterClient
+from hedonism_assistant.models.chat import ChatTurn
 from hedonism_assistant.models.query import QueryIntent
 from hedonism_assistant.models.wine import WineColor
 from hedonism_assistant.retrieval.query_parser import QueryParser
@@ -204,3 +205,43 @@ async def test_bad_filter_value_does_not_sink_the_parse() -> None:
     assert parsed.filters.bottle_size_ml is None
     assert parsed.filters.in_bond is None
     assert parsed.filters.min_critic_score == 92.0
+
+
+async def test_history_is_included_in_the_prompt() -> None:
+    captured: dict[str, object] = {}
+    client = _client()
+
+    async def fake_chat(messages, **kwargs) -> str:
+        captured["messages"] = messages
+        return json.dumps({"semantic_query": "cheaper", "intent": "recommendation"})
+
+    client.chat = fake_chat  # type: ignore[method-assign]
+    parser = QueryParser(client, Settings(openrouter_api_key="test"))
+
+    history = [
+        ChatTurn(role="user", content="a red Bordeaux"),
+        ChatTurn(role="assistant", content="The Pichon Lalande [1]."),
+    ]
+    await parser.parse("something cheaper", history)
+
+    user_content = captured["messages"][-1]["content"]
+    assert "Conversation so far:" in user_content
+    assert "a red Bordeaux" in user_content
+    assert "The Pichon Lalande [1]." in user_content
+    assert "Current message: something cheaper" in user_content
+
+
+async def test_no_history_keeps_the_bare_message() -> None:
+    captured: dict[str, object] = {}
+    client = _client()
+
+    async def fake_chat(messages, **kwargs) -> str:
+        captured["messages"] = messages
+        return json.dumps({"semantic_query": "x", "intent": "recommendation"})
+
+    client.chat = fake_chat  # type: ignore[method-assign]
+    parser = QueryParser(client, Settings(openrouter_api_key="test"))
+
+    await parser.parse("red Bordeaux")
+
+    assert captured["messages"][-1]["content"] == "red Bordeaux"

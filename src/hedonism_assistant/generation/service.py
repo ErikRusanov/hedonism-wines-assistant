@@ -32,12 +32,16 @@ from hedonism_assistant.generation.fallbacks import (
     out_of_scope_suggestions,
 )
 from hedonism_assistant.generation.generator import AnswerGenerator, get_generator
+from hedonism_assistant.generation.understanding import filters_to_chips
 from hedonism_assistant.logging_config import get_logger
 from hedonism_assistant.models.chat import (
+    HISTORY_MAX_TURNS,
     AnswerChunk,
     AnswerCompletion,
     ChatResponse,
     ChatStreamEvent,
+    ChatTurn,
+    QueryUnderstanding,
     WineCitation,
 )
 from hedonism_assistant.models.query import QueryIntent
@@ -64,9 +68,21 @@ class ChatService:
         self._generator = generator
         self._settings = settings
 
-    async def answer_stream(self, message: str) -> AsyncIterator[ChatStreamEvent]:
-        """Stream the answer to ``message`` as chunks then one completion event."""
-        parsed = await self._parser.parse(message)
+    async def answer_stream(
+        self, message: str, history: list[ChatTurn] | None = None
+    ) -> AsyncIterator[ChatStreamEvent]:
+        """Stream the answer to ``message`` as chunks then one completion event.
+
+        ``history`` is the recent prior turns the client replays for context
+        (reference resolution, continuity); it is capped and threaded into both
+        query parsing and generation, but never persisted.
+        """
+        turns = (history or [])[-HISTORY_MAX_TURNS:]
+        parsed = await self._parser.parse(message, history=turns)
+
+        # Surface what we understood before retrieval so the UI can show it while
+        # the answer is still being prepared.
+        yield QueryUnderstanding(intent=str(parsed.intent), chips=filters_to_chips(parsed))
 
         if parsed.intent is QueryIntent.OTHER_DRINKS:
             logger.info("chat_other_drinks")
@@ -100,7 +116,7 @@ class ChatService:
             return
 
         parts: list[str] = []
-        async for delta in self._generator.stream(parsed, retrieved):
+        async for delta in self._generator.stream(parsed, retrieved, history=turns):
             parts.append(delta)
             yield AnswerChunk(delta=delta)
 
@@ -119,12 +135,12 @@ class ChatService:
             citations=extract_citations(answer, retrieved), suggestions=suggestions
         )
 
-    async def answer(self, message: str) -> ChatResponse:
+    async def answer(self, message: str, history: list[ChatTurn] | None = None) -> ChatResponse:
         """Collect the stream into a non-streaming :class:`ChatResponse`."""
         parts: list[str] = []
         citations: list[WineCitation] = []
         suggestions: list[str] = []
-        async for event in self.answer_stream(message):
+        async for event in self.answer_stream(message, history):
             match event:
                 case AnswerChunk(delta=delta):
                     parts.append(delta)
