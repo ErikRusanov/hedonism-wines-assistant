@@ -147,6 +147,18 @@ def test_embedding_text_carries_structured_facts() -> None:
     assert "94/100 (Vinous)" in text
 
 
+def test_embedding_text_includes_dietary_flags() -> None:
+    text = build_embedding_text(_wine(is_vegan=True, is_alcohol_free=True), notes_chars=0)
+    assert "suitable for vegans" in text
+    assert "alcohol-free" in text
+
+
+def test_embedding_text_omits_unset_dietary_flags() -> None:
+    text = build_embedding_text(_wine(), notes_chars=0)
+    assert "vegan" not in text
+    assert "kosher" not in text
+
+
 def test_embedding_text_includes_enrichment_tags() -> None:
     text = build_embedding_text(
         _wine(style_tags=["full-bodied", "oaked"], food_pairings=["roast lamb"]),

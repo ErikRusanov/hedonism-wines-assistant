@@ -70,6 +70,18 @@ def test_citation_carries_card_fields_for_rendering() -> None:
     assert citation.top_critic_score == 96.0
 
 
+def test_citation_carries_dietary_flags() -> None:
+    wine = make_wine(is_vegan=True, is_alcohol_free=True)
+    retrieved = [RetrievedWine(wine=wine, score=1.0)]
+
+    [citation] = extract_citations("a vegan pick [1]", retrieved)
+
+    assert citation.is_vegan is True
+    assert citation.is_alcohol_free is True
+    assert citation.is_organic is False
+    assert citation.is_kosher is False
+
+
 def test_citation_top_critic_is_none_without_scores() -> None:
     retrieved = _retrieved()
     wine = retrieved[1].wine  # Chablis Droin 2022, no critic scores

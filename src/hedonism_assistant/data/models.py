@@ -58,6 +58,10 @@ class RawWine(BaseModel):
     on_sale: bool = False
     sale_was_price: float | None = None
     in_bond: bool = False
+    is_vegan: bool = False
+    is_organic: bool = False
+    is_kosher: bool = False
+    is_alcohol_free: bool = False
     availability: Availability | None = None
     stock_qty: int | None = Field(default=None, description="Units left when a count is shown.")
 

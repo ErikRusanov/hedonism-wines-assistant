@@ -68,6 +68,15 @@ def test_bottle_size_and_in_bond_are_match_value() -> None:
     assert conds["in_bond"].match.value is True
 
 
+def test_dietary_flags_are_match_value() -> None:
+    conds = _conditions(build_qdrant_filter(WineFilters(is_vegan=True, is_alcohol_free=True)))
+    assert conds["is_vegan"].match.value is True
+    assert conds["is_alcohol_free"].match.value is True
+    # Unset flags add no condition.
+    assert "is_organic" not in conds
+    assert "is_kosher" not in conds
+
+
 def test_enum_category_serialises_to_string_value() -> None:
     conds = _conditions(build_qdrant_filter(WineFilters(category=[WineCategory.SPARKLING])))
     assert conds["category"].match.any == ["sparkling"]

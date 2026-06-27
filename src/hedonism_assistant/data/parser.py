@@ -136,6 +136,7 @@ class ProductParser:
             self._apply_jsonld(raw, jsonld)
         if intro is not None:
             self._apply_html(raw, intro)
+        self._apply_diet_badges(raw)
         return raw
 
     # ----------------------------------------------------------------------- #
@@ -284,6 +285,25 @@ class ProductParser:
             return True
         heading = cls._text(scope.select_one(".product-heading"))
         return "in bond" in heading.casefold()
+
+    # Dietary / production badges, keyed by the ``product__badge-<suffix>`` CSS
+    # class on the product's own badge block. We deliberately match the
+    # ``product__badge-*`` class, NOT the ``bd_*`` teaser class: the latter is
+    # reused on "related products" carousel tiles and would flag a wine because a
+    # *neighbour* is vegan.
+    _DIET_BADGES = (
+        ("vegan", "is_vegan"),
+        ("organic", "is_organic"),
+        ("kosher", "is_kosher"),
+        ("alcohol_free", "is_alcohol_free"),
+    )
+
+    def _apply_diet_badges(self, raw: RawWine) -> None:
+        """Set dietary flags from the main product's own ``product__badge-*`` block."""
+        scope = self._soup.select_one(".product--full") or self._soup
+        for suffix, field in self._DIET_BADGES:
+            if scope.select_one(f".product__badge-{suffix}") is not None:
+                setattr(raw, field, True)
 
     def _breadcrumb_section(self) -> str | None:
         """The first non-Home breadcrumb link, e.g. 'Wines' or 'Spirits'."""

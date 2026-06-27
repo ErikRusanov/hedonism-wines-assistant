@@ -98,6 +98,16 @@ class Wine(BaseModel):
     )
     in_bond: bool = Field(default=False, description="Sold in bond (duty/VAT not yet paid).")
 
+    # Dietary / production flags, parsed from the product's own ``product__badge-*``
+    # markers. Default False means "not flagged" (i.e. unknown), never a positive
+    # claim of the opposite — absence of a vegan badge does not assert non-vegan.
+    is_vegan: bool = Field(default=False, description="Carries the 'Vegan' badge.")
+    is_organic: bool = Field(default=False, description="Carries the 'Organic' badge.")
+    is_kosher: bool = Field(default=False, description="Carries the 'Kosher' badge.")
+    is_alcohol_free: bool = Field(
+        default=False, description="Carries the '0% / alcohol-free' badge."
+    )
+
     availability: Availability = Availability.IN_STOCK
     stock_qty: int | None = Field(default=None, description="Units left when a count is shown.")
 

@@ -36,16 +36,22 @@ logger = get_logger(__name__)
 
 
 def _numeric_only(filters: WineFilters) -> WineFilters:
-    """Keep only the numeric budget/quality constraints, drop categoricals.
+    """Keep the numeric budget/quality constraints and dietary flags, drop categoricals.
 
     Used by the filter-relaxation fallback: a price/vintage/critic-score bound is
     a literal limit the user means, so it survives relaxation; categorical filters
     (region, grape, a hallucinated category, …) are the ones dropped to recover.
+    Dietary flags (vegan/organic/kosher/alcohol-free) are non-negotiable too — a
+    "vegan wine" request must never relax into non-vegan results — so they survive.
     """
     return WineFilters(
         price_range=filters.price_range,
         vintage_range=filters.vintage_range,
         min_critic_score=filters.min_critic_score,
+        is_vegan=filters.is_vegan,
+        is_organic=filters.is_organic,
+        is_kosher=filters.is_kosher,
+        is_alcohol_free=filters.is_alcohol_free,
     )
 
 

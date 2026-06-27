@@ -181,6 +181,24 @@ async def test_relaxation_keeps_numeric_budget_constraint() -> None:
     assert {c.key for c in store.calls[1]["query_filter"].must} == {"price"}
 
 
+async def test_relaxation_keeps_dietary_constraint() -> None:
+    # A "vegan" request must never relax into non-vegan results: the dietary flag
+    # survives relaxation while the categorical region is dropped.
+    store = _FilterAwareStore([])
+    retriever = Retriever(
+        store, _capture_embed, NoOpReranker(), _settings(), sparse_encoder=SparseEncoder()
+    )
+    query = ParsedQuery(
+        semantic_query="vegan Burgundy",
+        filters=WineFilters(region=["Burgundy"], is_vegan=True),
+    )
+
+    await retriever.retrieve(query)
+
+    assert len(store.calls) == 2
+    assert {c.key for c in store.calls[1]["query_filter"].must} == {"is_vegan"}
+
+
 async def test_no_relaxation_when_only_numeric_filter_present() -> None:
     # "under £5" with nothing matching must stay empty, not relax into over-budget
     # recommendations — the relaxed filter would equal the original, so no retry.

@@ -68,6 +68,18 @@ async def test_prompt_has_grounding_and_injection_boundary() -> None:
     assert "Question: something nice" in user
 
 
+async def test_dietary_flags_reach_the_context_card() -> None:
+    capture: dict[str, Any] = {}
+    generator = _generator(["x"], capture)
+    wine = make_wine(is_vegan=True, is_organic=True)
+
+    parsed = ParsedQuery(semantic_query="vegan wine", intent=QueryIntent.RECOMMENDATION)
+    _ = [d async for d in generator.stream(parsed, _retrieved([wine]))]
+
+    user = capture["messages"][1]["content"]
+    assert "dietary: vegan, organic" in user
+
+
 async def test_context_capped_to_max_wines() -> None:
     capture: dict[str, Any] = {}
     generator = _generator(["x"], capture, generation_context_max_wines=2)

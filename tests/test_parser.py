@@ -70,6 +70,46 @@ def test_spirit_is_recognised_as_non_wine() -> None:
     assert raw.stock_qty is None  # "Out of stock" carries no count
 
 
+def test_dietary_badges_from_own_product_block() -> None:
+    # A vegan/organic badge on the product's OWN ``product__badge-*`` block is read;
+    # a ``bd_*`` teaser or a ``product__badge-*`` sitting in the related-products rail
+    # (outside ``.product--full``) must NOT flag the wine.
+    html = """
+    <ol class="breadcrumb">
+      <li><a href="/">Home</a></li><li><a href="/wines">Wines</a></li>
+    </ol>
+    <article class="product product--full">
+      <div class="product-badges">
+        <div class="product__badge product__badge-vegan"></div>
+        <div class="product__badge product__badge-organic"></div>
+      </div>
+      <div class="product_intro">
+        <h1 class="page-title"><span>Invented Vegan Red 2020</span></h1>
+        <div class="title-sub-string"><span>HED22222 </span><span>75cl</span></div>
+        <div class="field--name-price"><div class="base-price">£28.00</div></div>
+        <div class="attribute-item colour">Red</div>
+      </div>
+    </article>
+    <section class="related">
+      <div class="product-teaser"><div class="bd_teaser bd_kosher">Kosher</div></div>
+      <div class="product__badge product__badge-alcohol_free"></div>
+    </section>"""
+    raw = parse_product(html, "https://hedonism.co.uk/product/invented-vegan-red-2020")
+    assert raw is not None
+    assert raw.is_vegan is True
+    assert raw.is_organic is True
+    # kosher is only a bd_ teaser, alcohol is a product__badge outside .product--full:
+    assert raw.is_kosher is False
+    assert raw.is_alcohol_free is False
+
+
+def test_no_dietary_badges_leaves_flags_false(wine: RawWine) -> None:
+    assert wine.is_vegan is False
+    assert wine.is_organic is False
+    assert wine.is_kosher is False
+    assert wine.is_alcohol_free is False
+
+
 def test_non_vintage_and_sale_pricing() -> None:
     html = """
     <ol class="breadcrumb">

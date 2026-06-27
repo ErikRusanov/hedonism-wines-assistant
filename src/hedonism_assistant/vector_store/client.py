@@ -55,6 +55,10 @@ _PAYLOAD_INDEXES: Final[tuple[tuple[str, PayloadSchemaType], ...]] = (
     ("bottle_size_ml", PayloadSchemaType.INTEGER),
     (MAX_CRITIC_SCORE_FIELD, PayloadSchemaType.FLOAT),
     ("in_bond", PayloadSchemaType.BOOL),
+    ("is_vegan", PayloadSchemaType.BOOL),
+    ("is_organic", PayloadSchemaType.BOOL),
+    ("is_kosher", PayloadSchemaType.BOOL),
+    ("is_alcohol_free", PayloadSchemaType.BOOL),
 )
 
 

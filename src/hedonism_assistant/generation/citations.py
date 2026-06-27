@@ -78,4 +78,8 @@ def _to_citation(candidate: RetrievedWine) -> WineCitation:
         top_critic_score=round(normalize_critic_score(top.score, top.scale), 1) if top else None,
         on_sale=wine.on_sale,
         sale_was_price=wine.sale_was_price,
+        is_vegan=wine.is_vegan,
+        is_organic=wine.is_organic,
+        is_kosher=wine.is_kosher,
+        is_alcohol_free=wine.is_alcohol_free,
     )

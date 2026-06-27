@@ -55,6 +55,10 @@ class WineFilters(BaseModel):
         default=None, description="Lower bound on any critic score, normalised to a 100-pt scale."
     )
     in_bond: bool | None = None
+    is_vegan: bool | None = None
+    is_organic: bool | None = None
+    is_kosher: bool | None = None
+    is_alcohol_free: bool | None = None
 
 
 class ParsedQuery(BaseModel):

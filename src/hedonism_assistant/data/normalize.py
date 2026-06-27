@@ -324,6 +324,10 @@ def normalize_wine(raw: RawWine) -> Wine | None:
         on_sale=raw.on_sale,
         sale_was_price=raw.sale_was_price,
         in_bond=raw.in_bond,
+        is_vegan=raw.is_vegan,
+        is_organic=raw.is_organic,
+        is_kosher=raw.is_kosher,
+        is_alcohol_free=raw.is_alcohol_free,
         availability=raw.availability or Availability.IN_STOCK,
         stock_qty=raw.stock_qty,
         critic_scores=raw.critic_scores,
@@ -408,6 +412,20 @@ def build_embedding_text(wine: Wine, *, notes_chars: int = 600) -> str:
     if wine.in_bond:
         specs.append("sold in bond")
     sentences.append("It is " + _join_natural(specs) + ".")
+
+    # Dietary / production flags sentence (only the badges the product carries).
+    diet = [
+        phrase
+        for flag, phrase in (
+            (wine.is_vegan, "suitable for vegans"),
+            (wine.is_organic, "organic"),
+            (wine.is_kosher, "kosher"),
+            (wine.is_alcohol_free, "alcohol-free"),
+        )
+        if flag
+    ]
+    if diet:
+        sentences.append(f"It is {_join_natural(diet)}.")
 
     # Critic sentence.
     if wine.critic_scores:

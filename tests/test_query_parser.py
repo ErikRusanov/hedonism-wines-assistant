@@ -194,6 +194,7 @@ async def test_bad_filter_value_does_not_sink_the_parse() -> None:
                 "color": ["red", "ultraviolet"],
                 "bottle_size_ml": "not-a-number",
                 "in_bond": "yes",
+                "is_vegan": "yes",
                 "min_critic_score": 92,
             },
         }
@@ -204,7 +205,25 @@ async def test_bad_filter_value_does_not_sink_the_parse() -> None:
     assert parsed.filters.color == [WineColor.RED]
     assert parsed.filters.bottle_size_ml is None
     assert parsed.filters.in_bond is None
+    assert parsed.filters.is_vegan is None
     assert parsed.filters.min_critic_score == 92.0
+
+
+async def test_vegan_request_becomes_a_hard_filter() -> None:
+    parser = _parser_returning(
+        {
+            "semantic_query": "vegan wine",
+            "intent": "recommendation",
+            "filters": {"is_vegan": True, "price_range": {"max": 40}},
+        }
+    )
+
+    parsed = await parser.parse("do you have vegan wines under £40?")
+
+    assert parsed.filters.is_vegan is True
+    assert parsed.filters.is_organic is None
+    assert parsed.filters.price_range is not None
+    assert parsed.filters.price_range.max == 40
 
 
 async def test_history_is_included_in_the_prompt() -> None:

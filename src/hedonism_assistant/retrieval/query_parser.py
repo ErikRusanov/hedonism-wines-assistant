@@ -73,7 +73,11 @@ Return ONLY a JSON object with this shape (omit fields you cannot fill):
     "price_range": {"min": number, "max": number},
     "bottle_size_ml": int,         // e.g. 1500 for a magnum
     "min_critic_score": number,    // normalised to a 100-pt scale
-    "in_bond": bool
+    "in_bond": bool,
+    "is_vegan": bool,              // true only when the user asks for vegan wine
+    "is_organic": bool,            // true only when the user asks for organic wine
+    "is_kosher": bool,             // true only when the user asks for kosher wine
+    "is_alcohol_free": bool        // true for non-alcoholic / 0% / dealcoholised
   }
 }
 
@@ -82,6 +86,10 @@ Rules:
   price_range.max=50), vintage ("2015", "before 2010"), region/country/
   sub-region, grape variety, colour, category, bottle size, in-bond, critic
   score ("90+ points" -> min_critic_score=90).
+- Set a dietary flag ONLY when the user explicitly asks for it: "vegan wine" ->
+  is_vegan=true, "organic" -> is_organic=true, "kosher" -> is_kosher=true,
+  "non-alcoholic"/"alcohol-free"/"0%"/"dealcoholised" -> is_alcohol_free=true.
+  Never set one to false and never infer it from anything else.
 - When the user names a producer, brand, house or wine (e.g. "Dom Pérignon",
   "Sassicaia", "Cristal"), put that name in the "producer" filter AND keep it in
   semantic_query. Use the name exactly as written; it is validated against the
@@ -129,6 +137,10 @@ User: "a gift for my father, he loves bold reds, around £100"
 User: "tell me about Dom Pérignon, which bottles do you have?"
 {"semantic_query": "Dom Pérignon champagne, available bottles", "intent": "factual",
  "filters": {"producer": ["Dom Pérignon"]}}
+
+User: "do you have vegan wines under £40?"
+{"semantic_query": "vegan wine", "intent": "recommendation",
+ "filters": {"is_vegan": true, "price_range": {"max": 40}}}
 
 User: "do you have any good whisky?"
 {"semantic_query": "good whisky", "intent": "other_drinks", "filters": {}}
@@ -230,7 +242,6 @@ class QueryParser:
             key: self._taxonomy.canonicalize(dimension, self._as_str_list(raw.get(key)))
             for key, dimension in _TAXONOMY_DIMENSIONS.items()
         }
-        in_bond = raw.get("in_bond")
         return WineFilters(
             category=self._coerce_enum_list(raw.get("category"), _CATEGORY_BY_VALUE),
             color=self._coerce_enum_list(raw.get("color"), _COLOR_BY_VALUE),
@@ -239,8 +250,17 @@ class QueryParser:
             price_range=self._build_range(raw.get("price_range"), PriceRange, float),
             bottle_size_ml=self._coerce_number(raw.get("bottle_size_ml"), int),
             min_critic_score=self._coerce_number(raw.get("min_critic_score"), float),
-            in_bond=in_bond if isinstance(in_bond, bool) else None,
+            in_bond=self._coerce_bool(raw.get("in_bond")),
+            is_vegan=self._coerce_bool(raw.get("is_vegan")),
+            is_organic=self._coerce_bool(raw.get("is_organic")),
+            is_kosher=self._coerce_bool(raw.get("is_kosher")),
+            is_alcohol_free=self._coerce_bool(raw.get("is_alcohol_free")),
         )
+
+    @staticmethod
+    def _coerce_bool(value: object) -> bool | None:
+        """A real bool stays; anything else (string "yes", number, None) -> None."""
+        return value if isinstance(value, bool) else None
 
     @staticmethod
     def _pure_semantic(message: str, *, confident: bool) -> ParsedQuery:

@@ -60,6 +60,11 @@ class WineCitation(BaseModel):
     on_sale: bool = False
     sale_was_price: float | None = None
 
+    is_vegan: bool = False
+    is_organic: bool = False
+    is_kosher: bool = False
+    is_alcohol_free: bool = False
+
 
 class ChatResponse(BaseModel):
     """Non-streaming representation of an answer (the SSE stream emits the same data).

@@ -74,6 +74,10 @@ def _conditions(filters: WineFilters) -> Iterator[FieldCondition | None]:
         yield FieldCondition(key=MAX_CRITIC_SCORE_FIELD, range=Range(gte=filters.min_critic_score))
     yield _match_value("bottle_size_ml", filters.bottle_size_ml)
     yield _match_value("in_bond", filters.in_bond)
+    yield _match_value("is_vegan", filters.is_vegan)
+    yield _match_value("is_organic", filters.is_organic)
+    yield _match_value("is_kosher", filters.is_kosher)
+    yield _match_value("is_alcohol_free", filters.is_alcohol_free)
 
 
 def build_qdrant_filter(filters: WineFilters) -> Filter | None:

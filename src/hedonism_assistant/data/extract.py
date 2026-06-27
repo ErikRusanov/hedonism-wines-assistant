@@ -54,6 +54,10 @@ class ExtractReport:
         "critic_scores",
         "tasting_notes",
         "image_url",
+        "is_vegan",
+        "is_organic",
+        "is_kosher",
+        "is_alcohol_free",
         "embedding_text",
     )
 
@@ -70,6 +74,9 @@ class ExtractReport:
     def _is_populated(value: object) -> bool:
         if value is None:
             return False
+        if isinstance(value, bool):
+            # For flag fields, "coverage" means the share of cards carrying it.
+            return value
         if isinstance(value, list | str | dict):
             return len(value) > 0
         return True
