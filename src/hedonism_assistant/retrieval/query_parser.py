@@ -86,6 +86,15 @@ Rules:
   price_range.max=50), vintage ("2015", "before 2010"), region/country/
   sub-region, grape variety, colour, category, bottle size, in-bond, critic
   score ("90+ points" -> min_critic_score=90).
+- Price direction matters and is easy to get wrong. "under / below / less than /
+  up to / no more than £X", "cheaper" and "budget" set price_range.MAX. "over /
+  above / more than / at least / from £X", "pricier" and "more expensive" set
+  price_range.MIN. NEVER set a min for an "under/below/cheaper" phrase, and NEVER
+  set a max for an "over/above/more-expensive" phrase.
+- Always write semantic_query in ENGLISH, translating if the user wrote in another
+  language, because it is matched against an English-language catalogue. Filters and
+  intent are language-independent. (The user-facing answer is written elsewhere and
+  will be in the user's own language; semantic_query is for search only.)
 - Set a dietary flag ONLY when the user explicitly asks for it: "vegan wine" ->
   is_vegan=true, "organic" -> is_organic=true, "kosher" -> is_kosher=true,
   "non-alcoholic"/"alcohol-free"/"0%"/"dealcoholised" -> is_alcohol_free=true.
@@ -116,9 +125,16 @@ Rules:
   restate the message in semantic_query.
 - If a "Conversation so far" block precedes the current message, use it ONLY to
   resolve references in the current message: "something cheaper" lowers the price
-  relative to the last suggestion; "what about a white?" keeps the prior subject
-  but swaps colour; "to go with that" reuses the dish. Always parse for the user's
-  CURRENT ask — do not re-extract constraints they have moved on from.
+  relative to the last suggestion (set price_range.MAX, never min); "what about a
+  white?" keeps the prior subject but swaps colour; "to go with that" reuses the
+  dish. Always parse for the user's CURRENT ask — do not re-extract constraints they
+  have moved on from.
+- When the current message asks to RELAX, LOWER or DROP a constraint that an
+  earlier turn set ("cheaper", "lower the minimum price", "without the price limit",
+  "any vintage", "anywhere"), emit the RELAXED filter or omit it entirely. Do NOT
+  re-emit the very constraint the user is asking you to loosen. In particular,
+  "lower the minimum price" / "something cheaper" after an expensive ask must DROP
+  price_range.min (and may add a price_range.max), never keep the old min.
 
 Examples:
 User: "red Bordeaux under £50"
@@ -141,6 +157,24 @@ User: "tell me about Dom Pérignon, which bottles do you have?"
 User: "do you have vegan wines under £40?"
 {"semantic_query": "vegan wine", "intent": "recommendation",
  "filters": {"is_vegan": true, "price_range": {"max": 40}}}
+
+Conversation so far:
+User: anything over £500?
+Assistant: I couldn't find any wines over £500.
+Current message: "actually something cheaper, under £100"
+{"semantic_query": "cheaper wine", "intent": "recommendation",
+ "filters": {"price_range": {"max": 100}}}
+
+Conversation so far:
+User: anything over £500?
+Assistant: I couldn't find any wines over £500.
+Current message: "lower the minimum price"
+{"semantic_query": "wine without a high price floor", "intent": "recommendation",
+ "filters": {}}
+
+User (in Russian): "посоветуй насыщенное красное до 50 фунтов"
+{"semantic_query": "rich full-bodied red wine", "intent": "recommendation",
+ "filters": {"color": ["red"], "price_range": {"max": 50}}}
 
 User: "do you have any good whisky?"
 {"semantic_query": "good whisky", "intent": "other_drinks", "filters": {}}
