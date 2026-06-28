@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # OpenRouter
     openrouter_api_key: str = ""
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    # Optional reverse proxy in front of OpenRouter. When set, every OpenRouter
+    # request carries `X-Proxy-Token: <this>` so a gated proxy (e.g. the FastAPI
+    # proxy on the VPN host) lets it through. Empty = talk to OpenRouter directly.
+    proxy_auth_token: str = ""
 
     generation_model: str = "anthropic/claude-opus-4-8"
     utility_model: str = "anthropic/claude-haiku-4-5"

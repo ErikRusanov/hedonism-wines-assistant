@@ -36,11 +36,17 @@ class OpenRouterClient:
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        # When routing through a gated reverse proxy, every request must carry the
+        # proxy's auth header (the proxy then forwards to OpenRouter upstream).
+        default_headers = (
+            {"X-Proxy-Token": settings.proxy_auth_token} if settings.proxy_auth_token else None
+        )
         self._client = AsyncOpenAI(
             api_key=settings.openrouter_api_key,
             base_url=settings.openrouter_base_url,
             timeout=settings.request_timeout_seconds,
             max_retries=0,  # retries are owned by this wrapper, not the SDK
+            default_headers=default_headers,
         )
 
     async def _with_retry(self, operation: Callable[[], Awaitable[T]]) -> T:
