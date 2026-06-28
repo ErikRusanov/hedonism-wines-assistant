@@ -31,6 +31,10 @@ CADDY_IMAGE="${CADDY_IMAGE:-caddy:2}"
 ALPINE_IMAGE="${ALPINE_IMAGE:-alpine:3.20}"
 LOCAL_QDRANT_VOLUME="${LOCAL_QDRANT_VOLUME:-hedonism-wines-assistant_qdrant_storage}"
 REMOTE_QDRANT_VOLUME="${REMOTE_QDRANT_VOLUME:-hedonism_qdrant_storage}"
+# Docker platform of the SERVER. Everything we build/pull/save must target this,
+# not the local machine's arch — an arm64 Mac otherwise ships images the amd64
+# server can't exec. Auto-detected from the server in step 4 when left empty.
+TARGET_PLATFORM="${TARGET_PLATFORM:-}"
 AUTO_YES="${AUTO_YES:-}"
 
 # Repo root = parent of this script's dir.
@@ -142,6 +146,19 @@ ok "connected${RSUDO:+ (using sudo for privileged steps)}."
 step "4/12  Docker on the server"
 os_pretty="$(rsh '. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || echo unknown')"
 info "remote OS: ${os_pretty}"
+# Auto-detect the server's CPU arch so we build/pull images for IT, not for the
+# local machine (an arm64 Mac would otherwise ship images amd64 can't run).
+if [ -z "$TARGET_PLATFORM" ]; then
+  case "$(rsh 'uname -m')" in
+    x86_64|amd64)  TARGET_PLATFORM="linux/amd64" ;;
+    aarch64|arm64) TARGET_PLATFORM="linux/arm64" ;;
+    *) warn "unknown remote arch '$(rsh 'uname -m')'; defaulting to linux/amd64"; TARGET_PLATFORM="linux/amd64" ;;
+  esac
+fi
+info "target platform: ${TARGET_PLATFORM}"
+if [ "$TARGET_PLATFORM" != "linux/$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')" ]; then
+  warn "server arch differs from this machine — images build/pull under emulation (slower)."
+fi
 if rsh 'command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1'; then
   ok "docker + compose present: $(rsh 'docker --version')"
 else
@@ -174,14 +191,14 @@ fi
 # ---------------------------------------------------------------------------
 # 6. Build the image locally + pull base images so they can be saved
 # ---------------------------------------------------------------------------
-step "6/12  Build ${IMAGE} locally (bakes embed model + sparse encoder + bottles)"
-docker build -f Dockerfile.prod -t "$IMAGE" .
+step "6/12  Build ${IMAGE} for ${TARGET_PLATFORM} (bakes embed model + sparse encoder + bottles)"
+docker build --platform "$TARGET_PLATFORM" -f Dockerfile.prod -t "$IMAGE" .
 ok "built $(docker image inspect "$IMAGE" --format '{{.Size}}' | awk '{printf "%.1f GB", $1/1e9}')"
-info "pulling base images locally so they ship from here (server pulls nothing)..."
-docker pull "$QDRANT_IMAGE" >/dev/null
-docker pull "$CADDY_IMAGE"  >/dev/null
-docker pull "$ALPINE_IMAGE" >/dev/null
-ok "have ${QDRANT_IMAGE}, ${CADDY_IMAGE}, ${ALPINE_IMAGE} locally."
+info "pulling base images for ${TARGET_PLATFORM} so they ship from here (server pulls nothing)..."
+docker pull --platform "$TARGET_PLATFORM" "$QDRANT_IMAGE" >/dev/null
+docker pull --platform "$TARGET_PLATFORM" "$CADDY_IMAGE"  >/dev/null
+docker pull --platform "$TARGET_PLATFORM" "$ALPINE_IMAGE" >/dev/null
+ok "have ${QDRANT_IMAGE}, ${CADDY_IMAGE}, ${ALPINE_IMAGE} for ${TARGET_PLATFORM}."
 
 # ---------------------------------------------------------------------------
 # 7. Ship images over SSH (docker save | gzip | docker load)
@@ -207,7 +224,10 @@ step "9/12  Restore index into remote volume ${REMOTE_QDRANT_VOLUME}"
 rsh "cd '$REMOTE_DIR' 2>/dev/null && docker compose -f docker-compose.prod.yml rm -sf qdrant" >/dev/null 2>&1 || true
 rsh "docker volume rm '$REMOTE_QDRANT_VOLUME'" >/dev/null 2>&1 || true
 rsh "docker volume create '$REMOTE_QDRANT_VOLUME'" >/dev/null
-docker run --rm -v "${LOCAL_QDRANT_VOLUME}:/data:ro" "$ALPINE_IMAGE" tar czf - -C /data . \
+# Local side reads the volume with the same (server-arch) alpine — emulated here
+# if arches differ, but it's only tarring data bytes so that's fine. The remote
+# side runs the alpine natively (it matches the server).
+docker run --platform "$TARGET_PLATFORM" --rm -v "${LOCAL_QDRANT_VOLUME}:/data:ro" "$ALPINE_IMAGE" tar czf - -C /data . \
   | ssh "${SSH_OPTS[@]}" "$REMOTE" "docker run --rm -i -v '${REMOTE_QDRANT_VOLUME}:/data' '${ALPINE_IMAGE}' tar xzf - -C /data"
 docker compose start qdrant >/dev/null 2>&1 || true
 trap cleanup EXIT
