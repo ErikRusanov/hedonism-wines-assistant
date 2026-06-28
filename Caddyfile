@@ -1,0 +1,7 @@
+# Caddy terminates TLS and reverse-proxies to the api container.
+# Automatic HTTPS via Let's Encrypt: requires the domain's A-record to point at
+# this server and ports 80/443 reachable. Caddy renews the cert on its own.
+hedonism-wines.era-lands.ru {
+	encode zstd gzip
+	reverse_proxy api:8000
+}

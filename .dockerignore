@@ -9,6 +9,9 @@ __pycache__
 .ruff_cache
 .mypy_cache
 data
+# …but the prod image (Dockerfile.prod) needs the fitted sparse encoder, so let
+# just that one file into the build context.
+!data/sparse_encoder.json
 qdrant_storage
 *.log
 .env

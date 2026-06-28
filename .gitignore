@@ -17,6 +17,9 @@ venv/
 # Environment
 .env
 .env.local
+# Production env holds real secrets (OpenRouter key, auth password). The
+# committed template is .env.prod.example.
+.env.prod
 
 # Testing / tooling caches
 .pytest_cache/

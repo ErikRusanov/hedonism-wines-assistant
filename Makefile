@@ -1,4 +1,4 @@
-.PHONY: help setup embed-setup run test format data index eval
+.PHONY: help setup embed-setup run test format data index eval deploy
 .DEFAULT_GOAL := help
 
 # Data-track parameters, overridable on the command line. Examples:
@@ -65,3 +65,11 @@ eval: ## Run the golden-set eval harness against live Qdrant — LIMIT/NOJUDGE
 	docker compose up -d qdrant
 	uv run python -m hedonism_assistant.eval.run --log-console \
 		$(if $(LIMIT),--limit $(LIMIT)) $(if $(NOJUDGE),--no-judge)
+
+# Build the serving image locally and ship the whole stack to the production
+# server over SSH (no registry): app image + qdrant + caddy, the local Qdrant
+# index, and .env.prod. Interactive; AUTO_YES=1 skips the prompts. Override the
+# target with SERVER_IP=, SSH_USER=, DOMAIN=, etc. See scripts/deploy.sh.
+deploy: ## Build locally + ship the full stack to the prod server over SSH
+	bash scripts/deploy.sh
+

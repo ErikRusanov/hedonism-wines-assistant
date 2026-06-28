@@ -1,0 +1,55 @@
+# syntax=docker/dockerfile:1
+#
+# Production serving image. Unlike the dev `Dockerfile`, this one is fully
+# self-contained for *query-time* serving of a pre-built index:
+#
+#   * installs the [embed] stack (sentence-transformers) with CPU-only torch —
+#     the query side embeds the user's question locally with the SAME model the
+#     index was built with (BAAI/bge-base-en-v1.5, 768-dim). Without this the
+#     transferred index can't be searched.
+#   * pre-downloads that model into a baked HF cache, so the server never needs
+#     to reach HuggingFace at runtime (HF_HUB_OFFLINE=1 below).
+#   * bakes in data/sparse_encoder.json, required by the hybrid retriever
+#     (SPARSE_ENABLED=true) — without it retrieval silently degrades to dense.
+#   * the 376 bottle JPGs under src/.../static/bottles/ come in via `COPY src`
+#     (they're not excluded by .dockerignore), so /bottles/<SKU>.jpg works.
+#
+# Result is a ~2 GB image shipped to the server via `docker save | docker load`
+# (no registry pull). See scripts/deploy.sh.
+FROM python:3.12-slim AS base
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    HF_HOME=/opt/hf
+
+# uv for fast, reproducible installs.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /app
+
+# Dependencies first for better layer caching.
+COPY pyproject.toml README.md ./
+COPY src ./src
+
+# CPU-only torch (≈600 MB vs ≈5 GB for the CUDA build), then the app + the
+# [embed] extra (sentence-transformers reuses the torch already present).
+RUN uv pip install --system --no-cache torch --index-url https://download.pytorch.org/whl/cpu \
+ && uv pip install --system --no-cache ".[embed]"
+
+# Pre-bake the embedding model into the image's HF cache.
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-base-en-v1.5')"
+
+# Sparse encoder consumed by the query side (data/sparse_encoder.json default).
+# Reachable in the build context thanks to the `!data/sparse_encoder.json`
+# negation in .dockerignore.
+COPY data/sparse_encoder.json /app/data/sparse_encoder.json
+
+# Everything the model needs is now baked — forbid runtime network to HF so a
+# missing/blocked HuggingFace doesn't stall startup.
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
+
+EXPOSE 8000
+
+CMD ["uvicorn", "hedonism_assistant.api.app:app", "--host", "0.0.0.0", "--port", "8000"]

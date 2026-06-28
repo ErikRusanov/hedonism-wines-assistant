@@ -1,0 +1,56 @@
+# Production stack: api (loaded image, no build) + qdrant + caddy (TLS).
+# Only Caddy is published to the host; api and qdrant stay on the internal
+# network and are never reachable from outside.
+#
+# The qdrant_storage volume is declared `external` and is pre-restored from the
+# transferred local index by scripts/deploy.sh BEFORE this stack comes up.
+name: hedonism
+
+services:
+  api:
+    image: hedonism-api:prod
+    env_file:
+      - .env.prod
+    environment:
+      QDRANT_URL: http://qdrant:6333
+    depends_on:
+      qdrant:
+        condition: service_started
+    expose:
+      - "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      # Generous: the embedding model loads into memory on first request/boot.
+      start_period: 60s
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    expose:
+      - "6333"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  qdrant_storage:
+    external: true
+    name: hedonism_qdrant_storage
+  caddy_data: {}
+  caddy_config: {}
