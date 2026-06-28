@@ -12,6 +12,8 @@
 #   make deploy                 # interactive
 #   AUTO_YES=1 make deploy      # don't ask, just go (CI / re-deploys)
 #   SERVER_IP=1.2.3.4 SSH_USER=ubuntu make deploy   # override any var below
+#   PRUNE=0 make deploy             # keep old images instead of pruning them
+#   PRUNE_BUILD_CACHE=1 make deploy # also drop the local emulated build cache
 #
 # Every step prints what it will do and is idempotent — safe to re-run.
 set -euo pipefail
@@ -35,6 +37,12 @@ REMOTE_QDRANT_VOLUME="${REMOTE_QDRANT_VOLUME:-hedonism_qdrant_storage}"
 # not the local machine's arch — an arm64 Mac otherwise ships images the amd64
 # server can't exec. Auto-detected from the server in step 4 when left empty.
 TARGET_PLATFORM="${TARGET_PLATFORM:-}"
+# Prune superseded images/containers after a successful deploy (server + local)
+# so old ~2 GB layers — old code, embedding model, bottle photos — don't pile up.
+# PRUNE=0 to skip. PRUNE_BUILD_CACHE=1 also drops the local emulated build cache
+# (frees more, but the next build re-downloads torch + re-bakes the model).
+PRUNE="${PRUNE:-1}"
+PRUNE_BUILD_CACHE="${PRUNE_BUILD_CACHE:-}"
 AUTO_YES="${AUTO_YES:-}"
 
 # Repo root = parent of this script's dir.
@@ -247,6 +255,27 @@ ok "config in place."
 step "11/12 Start the stack"
 rsh "cd '$REMOTE_DIR' && docker compose -f docker-compose.prod.yml up -d"
 rsh "cd '$REMOTE_DIR' && docker compose -f docker-compose.prod.yml ps"
+
+# ---------------------------------------------------------------------------
+# 11b. Clean up superseded junk. Runs AFTER `up -d`, so the now-running images
+#      are referenced and never pruned — only the old, untagged layers from
+#      previous deploys (old app image incl. bottle photos, replaced base
+#      images, stopped containers) are removed. Dangling-only by default: safe
+#      even on a shared host.
+# ---------------------------------------------------------------------------
+if [ -n "$PRUNE" ] && [ "$PRUNE" != "0" ]; then
+  step "      Prune old images/containers (server + local)"
+  rfreed="$(rsh 'docker container prune -f >/dev/null 2>&1 || true; docker image prune -f 2>/dev/null' | sed -n 's/^Total reclaimed space: //p')"
+  info "server reclaimed: ${rfreed:-0B}"
+  docker container prune -f >/dev/null 2>&1 || true
+  lfreed="$(docker image prune -f 2>/dev/null | sed -n 's/^Total reclaimed space: //p')"
+  info "local reclaimed:  ${lfreed:-0B}"
+  if [ -n "$PRUNE_BUILD_CACHE" ]; then
+    bfreed="$(docker builder prune -f 2>/dev/null | sed -n 's/^Total reclaimed space: //p')"
+    info "local build cache reclaimed: ${bfreed:-0B}"
+  fi
+  ok "cleanup done."
+fi
 
 # ---------------------------------------------------------------------------
 # 12. Verify
