@@ -21,7 +21,10 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Config (override any of these via the environment)
 # ---------------------------------------------------------------------------
-SERVER_IP="${SERVER_IP:-186.246.10.124}"
+# SERVER_IP — the deploy target. Lives in .env.prod (SERVER_IP=) so the target
+# is configured in one place; an explicit environment override still wins. It is
+# resolved from .env.prod just below, after we cd to the repo root.
+SERVER_IP="${SERVER_IP:-}"
 SSH_USER="${SSH_USER:-root}"
 DOMAIN="${DOMAIN:-hedonism-wines.era-lands.ru}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/hedonism}"
@@ -48,6 +51,13 @@ AUTO_YES="${AUTO_YES:-}"
 # Repo root = parent of this script's dir.
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_DIR"
+
+# Resolve the deploy target from .env.prod when not set in the environment. Plain
+# grep (not `source`) — .env.prod holds values with spaces/colons that would
+# break a shell source. Falls back to a hardcoded default if .env.prod lacks it.
+env_prod_val() { [ -f .env.prod ] && grep -E "^$1=" .env.prod | tail -n1 | cut -d= -f2- || true; }
+: "${SERVER_IP:=$(env_prod_val SERVER_IP)}"
+SERVER_IP="${SERVER_IP:-46.8.254.36}"
 
 # SSH connection multiplexing so we don't re-auth on every call.
 SSH_CTL="${TMPDIR:-/tmp}/hedonism-deploy-ssh-$$"
